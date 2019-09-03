@@ -1,0 +1,527 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) TYPE-MOON All Rights Reserved.
+/		ギャラリーメニュー
+/----------------------------------------------------------------------------*/
+@if(__GALLERYMENULAYER_DEFINED__==0)
+@set(__GALLERYMENULAYER_DEFINED__=1)
+
+Scripts.execStorage("ExtendMenuLayer.tjs");
+Scripts.execStorage("GalleryThumbnailListLayer.tjs");
+Scripts.execStorage("MenuTitleLayer.tjs");
+Scripts.execStorage("MenuBackButtonLayer.tjs");
+
+class GalleryMenuLayer extends ExtendMenuLayer
+{
+	var tarots;
+	var tarotdata = [
+		//	画像		ルート名	表示フラグ			カラー化フラグ
+		[ "gl_セイバー","セイバー",	"",					[ "gセイバークリア" ] ],
+		[ "gl_凛",		"凛",		"gセイバークリア",	[ "g凛グッド", "g凛トゥルー" ] ],
+		[ "gl_桜",		"桜",		"g凛クリア",		[ "g桜ノーマル", "g桜トゥルー" ] ]
+	];
+	var tarotbuttondata	= [
+		[ 3, "セイバー_route",	"gl_フェイト画像",		"", 36, 80 ],
+		[ 3, "凛_route",		"gl_アンリミテッド画像","", 289, 80 ],
+		[ 3, "桜_route",		"gl_ヘブンズ画像",		"", 542, 80 ]
+	];
+	var tarotCenterLeft	= 400;
+	var tarotTop		= 76;
+	var tarotSpacing	= 31;
+
+	var gallerybuttons;
+	var gallerybuttondata = [
+		[ 3, "セイバー_route",	"gl_フェイトボタン",		"", 116, 478 ],
+		[ 3, "凛_route",		"gl_アンリミテッドボタン",	"", 305, 477 ],
+		[ 3, "桜_route",		"gl_ヘブンズボタン",		"", 577, 477 ]
+	];
+	var another;
+	var title, back;
+
+	var thumbnailLayer;
+	var route;
+	var effect;
+	var delaytimer;
+	var rotatetime	= 400, rotateaccel = -3;
+
+	var showed;
+
+	function GalleryMenuLayer(win, par)
+	{
+		super.ExtendMenuLayer(...);
+		name	= "ギャラリーレイヤー";
+		route	= "";
+
+		loadImages("normal_extra");
+		setSizeToImageSize();
+		setPos(0, 0);
+
+		//	タロット
+		tarots	= [];
+		var tds = tarotdata;
+		var gbs	= gallerybuttondata;
+		var tbds= tarotbuttondata;
+		for(var i=0; i<tds.count; i++)
+		{
+			var td = tds[i];
+			var gb = gbs[i];
+			var tb = [];
+			tb.assign(tbds[i]);		//	中身を書き換えるのでコピーを作る
+			//	出現対象のフラグが立っていたら表示
+			if(td[2]=="" || sf[td[2]]>0)
+			{
+				//	そのルートを完全クリアしてたら真のタロット(カラー)表示
+				var ok = true;
+				for(var j=0; j<td[3].count; j++)
+					ok &= (sf[td[3][j]]>0);
+
+				//	タロットボタン
+				tb[2]	+= ok ? "b" : "a";
+				var tarot = tarots[i] = 
+					new ExButtonLayer(win, this, tb[1], tb[4], tb[5], tb[2], tb[3]);
+				with(tarot)
+				{
+					.mode		= tb[0];
+					.hitThreshold	= 0;
+					.focusable	= false;
+					.opacity	= 255;
+					.visible	= true;
+					.onMouseEnter	= function ()
+					{
+						relation.onMouseEnter(...);
+					} incontextof tarot;
+					.onMouseLeave	= function ()
+					{
+						relation.onMouseLeave(...);
+					} incontextof tarot;
+					.onMouseDown	= function (x, y, button, shift)
+					{
+						relation.onMouseDown(...);
+					} incontextof tarot;
+					.onMouseUp		= function (x, y, button, shift)
+					{
+						relation.onMouseUp(...);
+					} incontextof tarot;
+				}
+
+				//	ボタン作成
+				var btn;
+				if(gallerybuttons==void)
+					btn	= gallerybuttons	= new ExButtonLayer(win, this, gb[1], 0, gb[5], gb[2],
+						gb[3]);
+				else
+					btn	= gallerybuttons.add(gb[1], 0, gb[5], gb[2], gb[3]);
+				with(btn)
+				{
+					.mode		= 3;		//	押すだけボタン
+					.hitThreshold	= 0;	//	全て拾う
+					.focusable	= true;
+					.opacity	= 255;
+					.visible	= true;
+					.onMouseEnter	= function ()
+					{
+						global.ExButtonLayer.onMouseEnter(...);
+						relation.state	= 1;
+					} incontextof btn;
+					.onMouseLeave	= function ()
+					{
+						global.ExButtonLayer.onMouseLeave(...);
+						relation.state	= 0;
+					} incontextof btn;
+					.onMouseDown	= function (x, y, button, shift)
+					{
+						if(!parent.showed)	return;	//	受付状態になければ無視する
+						if(button==mbRight)
+							parent.closeThis();
+						else
+							relation.state	= 2;
+						global.ExButtonLayer.onMouseDown(...);
+					} incontextof btn;
+					.onMouseUp		= function (x, y, button, shift)
+					{
+						if(!parent.showed)	return;	//	受付状態になければ無視する
+						if(button!=mbRight)
+							relation.state	= 1;
+						global.ExButtonLayer.onMouseUp(...);
+					} incontextof btn;
+				}
+				tarot["relation"]	= btn;
+				btn["relation"]		= tarot;
+			}
+		}
+		//	Anotherギャラリー
+		another	= new GalleryAnotherButtonLayer(win, this);
+
+		//	表示位置を調整
+		var tw	= tarots.count * (tarots[0].width + tarotSpacing) - tarotSpacing;
+		var tl	= tarotCenterLeft - tw / 2;
+		var btn	= gallerybuttons;
+		for(var i=0; i<tarots.count; i++)
+		{
+			tarots[i].left	= tl;	//	位置調整
+			btn.left	= tl + (tarots[i].width - btn.width) / 2;	//	タロットにあわせ、調整
+			dm(btn.name+": "+btn.left);
+			tl	+= tarots[i].width + tarotSpacing;
+			btn	= btn.bros;
+		}
+
+		//	サムネールレイヤー
+		thumbnailLayer	= new global.GalleryThumbnailListLayer(window, this);
+
+		//	タイトルとバックボタン
+		title	= new global.MenuTitleLayer(win, this, "gallery_title", 27, 20, 1, 11);
+		title.noclear	= true;
+		back	= new global.MenuBackButtonLayer(win, this);
+		back.noclear	= true;
+	}
+
+	function finalize()
+	{
+		release(thumbnailLayer);
+		release(effect);
+		for(var i=0; i<tarots.count; i++)
+			release(tarots[i]);
+		release(tarots);
+		release(another);
+		release(gallerybuttons);
+		super.finalize(...);
+	}
+
+	function show()
+	{
+		if(!showed)
+		{
+			showed	= true;
+			super.show(...);
+			another.open();
+			title.open();
+			back.open();
+			changeBGM(BGMList["gallery"]) if BGMList["gallery"]!=void;
+//			focusable			= true;
+//			window.focusedLayer	= this;
+			gallerybuttons.get("セイバー_route").focus();
+		}
+	}
+
+	function hide()
+	{
+		if(showed)
+		{
+			showed	= false;
+			restoreBGM() if BGMList["gallery"]!=void;
+			back.close();
+			title.close();
+			another.close();
+			super.hide(...);
+		}
+	}
+
+	function closeThis()
+	{
+		parent.closeChild(this);
+	}
+
+	function changeFocusable(flag)
+	{
+		gallerybuttons.setAll("focusable", flag);
+		another.focusable	= flag;
+	}
+
+	function onMouseDown(x, y, button, shift)
+	{
+		if(!showed)	return;	//	受付状態になければ無視する
+		if(inTransition)
+			;//thumbnailLayer.onMouseDown(...);
+		else if(button==mbRight)
+			closeThis();
+	}
+//	function onMouseUp()	{	parent.onMouseUp(...); }
+
+	function onButtonDown(btn)
+	{
+		if(!showed)	return;	//	受付状態になければ無視する
+		var delaytime	= 1;	//	intervalが1ms以上でないとTimerクラスは処理をしない
+		dm("button: "+btn.id);
+
+		switch(btn.id)
+		{
+		case "セイバー_route":
+		case "凛_route":
+		case "桜_route":
+			route = btn.id.substr(0, btn.id.indexOf("_"));
+/*	ちょっと怪しいのでコメントアウトしておく
+			if(BGMList[route+"_gallery"]!=void)
+			{
+				changeBGM(BGMList[route+"_gallery"]);
+				changedBGM	= true;
+			}
+*/
+			//	エフェクト
+/*			if(effect==void)
+			{
+				effect	= new GalleryButtonEffectLayer(window, this);
+				effect.loadImages("gl_クリックエフェクト");
+				effect.saveOriginal();
+			}
+			effect.setImageSize(1, 1);	//	初期サイズ
+			effect.setSizeToImageSize();
+			effect.opacity	= 255;		//	初期不透明度
+			effect.setCenter(btn.left+(btn.width>>1), btn.top+(btn.height>>1));
+			effect.setMagnification(480, 84, 0, 800, -8);
+*/
+			//	ボタンのフォーカスを切る
+			changeFocusable(false);
+			window.focusedLayer	= void;
+
+			//	遅延で切り替わり
+			delaytimer	= new Timer(goThumbnail, "");
+			delaytimer.interval	= delaytime;
+			delaytimer.enabled	= true;
+			break;
+
+		case "another_route":	//	anotherではエフェクトとか無し！
+			dm("another");
+			route	= "another";
+
+			//	ボタンのフォーカスを切る
+			changeFocusable(false);
+			window.focusedLayer	= void;
+
+			//	遅延で切り替わり
+			delaytimer	= new Timer(goThumbnail, "");
+			delaytimer.interval	= delaytime;
+			delaytimer.enabled	= true;
+			break;
+
+		case "back":
+			if(route=="")
+				hide();	//	戻る
+			else
+				thumbnailLayer.hide();	//	サムネールリストを閉じる
+			break;
+		}
+	}
+
+	function goThumbnail()
+	{
+		//	遅延でサムネールへ
+		thumbnailLayer.setRoute(route);
+//		beginTransition(%[method:"crossfade",children:true,time:800], thumbnailLayer);
+		invalidate delaytimer;
+	}
+
+	function onThumbnailListClosed()
+	{
+/*	ちょっと怪しいのでコメントアウトしておく
+		if(changedBGM)
+		{
+			restoreBGM();
+			changedBGM	= false;
+		}
+*/
+		changeFocusable(true);
+		route	= "";
+	}
+}
+
+class GalleryTarotLayer extends KAGLayer
+{
+	var relation;
+	var baseleft, basewidth;
+	var tarotimage;
+
+	var time, accel;
+	var lasttick;
+	var reversed;
+
+	function GalleryTarotLayer(win, par, formal, l, t, rel)
+	{
+		super.KAGLayer(...);
+		relation	= rel;
+
+		loadImages(formal);
+		setSizeToImageSize();
+		setPos(l, t);
+		opacity	= 255;
+		visible	= true;
+
+		reversed	= false;
+	}
+
+	function finalize()
+	{
+		super.finalize(...);
+	}
+
+	function onMouseEnter()
+	{
+		relation.onMouseEnter(...);
+	}
+	function onMouseLeave()
+	{
+		relation.onMouseLeave(...);
+	}
+	function onMouseDown(x, y, button, shift)
+	{
+		if(!parent.showed)	return;	//	受付状態になければ無視する
+		if(button==mbRight)
+			parent.closeThis();
+		else
+			relation.onMouseDown(...);
+	}
+	function onMouseUp(x, y, button, shift)
+	{
+		if(!parent.showed)	return;	//	受付状態になければ無視する
+		if(button==mbRight)
+;//			parent.onMouseUp(...);
+		else
+			relation.onMouseUp(...);
+	}
+}
+
+class GalleryAnotherButtonLayer extends ExtraMenuButtonLayer
+{
+	function GalleryAnotherButtonLayer(win, par)
+	{
+		super.ExtraMenuButtonLayer(win, par, "another_route", 24, 550, "gl_anotherボタン",
+			"上記以外のイベント画像を表示します。", true, 5, 577);
+	}
+
+	function open(delay)
+	{
+		mover	= new ComplexLinearMover(this) if mover==void;
+		with(mover)
+		{
+			var w = underlinelayer.width;
+			.init(slidetime, -2);
+			.add("top", top+32, top);
+			.add("opacity", 0, 255);
+			.add("underlineleft", -underlinelayer.width, 0);
+			.add("underlineopacity", 0, 255);
+			.start(delay);
+		}
+		focusable	= true;
+	}
+
+	function close(delay)
+	{
+		mover	= new ComplexLinearMover(this) if mover==void;
+		with(mover)
+		{
+			var w = underlinelayer.width;
+			.init(slidetime, 2, onInnerClosed);
+			.add("top", top, top+32);
+			.add("opacity", 255, 0);
+			.add("underlineleft", underlinelayer.left, -underlinelayer.width);
+			.add("underlineopacity", 255, 0);
+			.start(delay);
+		}
+		focusable	= false;
+	}
+}
+
+class GalleryButtonEffectLayer extends BasicAnimeLayer
+{
+	var org;
+	var cx, cy;
+
+	var initWidth, initHeight, initOpacity;
+	var targetWidth, targetHeight, targetOpacity;
+
+	var time	= 800;
+	var accel	= 0;
+	var starttick;
+	var isMagnify;
+
+	function GalleryButtonEffectLayer(win, par)
+	{
+		super.BasicAnimeLayer(...);
+		name	= "ボタンエフェクト";
+//		type	= ltAdditive;
+		hitType		= htMask;
+		hitThreshold= 256;	//	すべてスルー
+	}
+
+	function finalize()
+	{
+		stopMagnification();
+		super.finalize(...);
+	}
+
+	function setCenter(x, y)
+	{
+		cx	= x;
+		cy	= y;
+	}
+
+	function saveOriginal()
+	{
+		if(this.org==void)
+		{
+			var o = this.org	= new global.Layer(window, this);
+			o.setImageSize(imageWidth, imageHeight);
+			o.copyRect(0, 0, this, 0, 0, imageWidth, imageHeight);
+		}
+	}
+
+	function setMagnification(w, h, opa, time, accel, func=void)
+	{
+		this.time	= time if time!==void;
+		this.accel	= accel if accel!==void;
+
+		initWidth	= width;
+		initHeight	= height;
+		initOpacity	= opacity;
+
+		targetWidth		= w;
+		targetHeight	= h;
+		targetOpacity	= opa;
+
+		starttick	= System.getTickCount();
+		System.addContinuousHandler(magnify_handler);
+		isMagnify	= true;
+		visible		= true;
+		nextfunc	= func;
+	}
+
+	function magnify_handler(tick)
+	{
+		var past = tick - starttick;
+		if(past>time)
+			finishMagnification();
+		else
+			magnify(calcAccel(past/time, accel));
+	}
+
+	function magnify(per)
+	{
+		var o = this.org;
+		var w = initWidth + (targetWidth - initWidth) * per;
+		var h = initHeight + (targetHeight - initHeight) * per;
+		setPos(cx - (w>>1), cy - (h>>1));
+		setImageSize(w, h);
+		setSizeToImageSize();
+		stretchCopy(0, 0, width, height, o, 0, 0, o.imageWidth, o.imageHeight);
+		opacity = initOpacity + (targetOpacity - initOpacity) * per;
+	}
+
+	function finishMagnification()
+	{
+		stopMagnification();
+		magnify(1.0);
+		if(opacity<1)
+			visible	= false;
+		if(nextfunc!=void)
+			nextfunc(this);
+	}
+
+	function stopMagnification()
+	{
+		isMagnify	= false;
+		System.removeContinuousHandler(magnify_handler);
+	}
+}
+
+/*----------------------------------------------------------------------------/
+/	
+/----------------------------------------------------------------------------*/
+@endif

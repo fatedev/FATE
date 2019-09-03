@@ -1,0 +1,824 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) TYPE-MOON All Rights Reserved.
+/		フローチャートレイヤー/フラグ状態レイヤー
+/----------------------------------------------------------------------------*/
+@if(__FLOWCHARTLAYER_DEFINED__==0)
+@set(__FLOWCHARTLAYER_DEFINED__=1)
+
+Plugins.link("drawer.dll");	//	線分、三角形描画
+Scripts.execStorage("FadeLayer.tjs");
+
+//	フローチャートを表示するレイヤー
+class FlowChartLayer extends FadeLayer
+{
+	//	各種設定値
+	var	showopac	= 192;
+	var	hideopac	= 64;
+	var	margin		= 16;
+	var	bgcolor			= 0xFFFFFF | (showopac<<24);
+	var	linecolor		= 0x000000 | (showopac<<24);
+	var	scenecolor		= 0xFFFF80 | (showopac<<24);
+	var	selectercolor	= 0x80FF80 | (showopac<<24);
+	var	outerlabelcolor	= 0x0080FF | (showopac<<24);
+	var	barcolor		= 0x000080 | (showopac<<24);
+	var	cursorcolor		= 0xFF8080 | (showopac<<24);
+	var	alternativecolor= 0xFFFFFF;
+	var	idcolor			= 0x000000;
+	var	barheight	= 16;
+	var	boxwidth	= 30;
+	var	boxheight	= 16;
+	var	defaulttime	= 200;
+	var	defaultaccel= 2;
+	var	clickmargin	= 1;
+	var	cursoropac	= 128;
+	var	selecterfontheight	= 12;
+	var	idfontheight		= 14;
+	var	detaildelay	= 400;
+	var	edge		= 6;
+
+	var	plugin;		//	大本のプラグイン
+
+	var	flowdata;	//	フローチャートデータ
+	var	_current;	//	現在のシーンID
+
+	var	cursorlayer;//	現在のシーンを指しているカーソルのレイヤー
+	var	enterlayer;	//	マウスが乗っかっているシーンを示すレイヤー
+
+	var	layer;		//	フローチャートが描かれているレイヤー
+	var	_layertop;	//	レイヤーの表示開始座標(レイヤーが入りきれない時にスクロールするための)
+
+	var	isShow;		//	このレイヤーが表示状態か？(画面下に待機している時はfalse)
+
+	var	isDrag;		//	レイヤー上でドラッグしているか？
+	var	lastx, lasty;	//	直前の座標
+	var	startx, starty;	//	ドラッグを開始した座標
+
+	var	detaillayer;	//	シーンなどの詳細を表示するレイヤー
+	var	detailtimer;	//	詳細の表示を開始させるタイマー
+	var	detailId;		//	表示させる詳細
+
+	var	_isShlink;
+
+	function FlowChartLayer(win, par, plugin)
+	{
+		super.FadeLayer(...);
+		this.plugin	= plugin;
+
+		var	w	= par.width \ 3 - margin;
+		var	h	= par.height - margin;
+
+		setSize(w, h);
+		fillRect(0, 0, w, barheight, barcolor);
+		font.height	= barheight;
+		drawText(2, 0, "フローチャート", bgcolor&0xFFFFFF);
+		fillRect(0, barheight, w, h-barheight, bgcolor);
+		font.height	= margin;
+		var	cl	= (w-font.getTextWidth("▲"))>>1;
+		var	tc	= linecolor&0xFFFFFF;
+		drawText(cl-(w>>2), barheight, "▲", tc);	//	上にスクロール
+		drawText(cl-(w>>2), h-margin, "▲", tc);
+		drawText(cl+(w>>2), barheight, "▼", tc);	//	下にスクロール
+		drawText(cl+(w>>2), h-margin, "▼", tc);
+		setClip(margin, margin+barheight, w-(margin<<1), h-barheight-(margin<<1));
+
+		setPos(par.width - width - margin, par.height - barheight);
+		isShow	= false;
+		opacity	= hideopac;
+
+		//	カーソルレイヤー
+		with(cursorlayer = new global.FadeLayer(win, this))
+		{
+			.setSize(boxwidth+edge, boxheight+edge);
+			.fillRect(0, 0, .width, .height, cursorcolor);
+			.hitType		= htMask;
+			.hitThreshold	= 256;
+			.opacity	= cursoropac;
+			.visible	= false;
+		}
+
+		//	Enterレイヤー
+		with(enterlayer = new global.FadeLayer(win, this))
+		{
+			.setSize(boxwidth+edge, boxheight+edge);
+			drawCursorRect(enterlayer, 0, 0, .width, .height, 0x00000000, (edge>>1)-1, 1, linecolor);
+			.hitType		= htMask;
+			.hitThreshold	= 256;
+			.opacity	= cursoropac;
+			.visible	= false;
+		}
+
+		//	詳細レイヤー
+		detaillayer = new .SceneDetailLayer(win, par, plugin, this);
+		detailtimer	= new Timer(onTimer, "");
+		detailtimer.interval	= detaildelay;
+
+		_layertop	= 0;
+		_current	= 0;
+	}
+
+	function finalize()
+	{
+		release(detailtimer);
+		release(detaillayer);
+		release(enterlayer);
+		release(cursorlayer);
+		release(layer);
+		super.finalize(...);
+	}
+
+	function onMouseDown(x, y, button, shift)
+	{
+		if(isShow)
+		{
+			if(button == mbRight)
+			{
+				move(left, parent.height - barheight, hideopac, defaulttime, defaultaccel);
+				isShow	= false;
+				detaillayer.visible	= false;
+			}
+			else if(button == mbLeft)
+			{
+				//	上下スクロール
+				if(y<barheight+margin || y>height-margin)
+				{
+					if(x<width>>1)
+						layertop	+= margin;
+					else
+						layertop	-= margin;
+					return;
+				}
+				else
+				{
+					//	詳細を表示するか？
+					var	bw2 = boxwidth>>1, bh2 = boxheight>>1;
+					var	flow	= flowdata;
+					x	-= clipLeft;
+					y	-= clipTop+layertop;
+					for(var i=0; i<flow.count; i++)
+					{
+						if(isVisibleObject(i))
+						{
+							with(flow[i])
+								if(inRect(x, y, .cx-bw2, .cy-bh2, .cx+bw2, .cy+bh2))
+								{
+									//	表示されているものの上で止まっていたらタイマー起動
+									detailId	= i;
+									onTimer();
+									enterlayer.setPos(.cx-bw2-(edge>>1)+clipLeft,
+										.cy-bh2-(edge>>1)+clipTop+layertop);
+									enterlayer.visible	= true;
+									return;
+								}
+						}
+					}
+				}
+			}
+		}
+		else
+		{
+			if(y<barheight)
+			{
+				move(left, (parent.height - height) >> 1, 255, defaulttime, defaultaccel);
+				isShow	= true;
+			}
+		}
+	}
+
+	function onMouseMove(x, y)
+	{
+		//	詳細を表示するか？
+		var	bw2 = boxwidth>>1, bh2 = boxheight>>1;
+		var	flow	= flowdata;
+		x	-= clipLeft;
+		y	-= clipTop+layertop;
+		for(var i=0; i<flow.count; i++)
+		{
+			if(isVisibleObject(i))
+			{
+				with(flow[i])
+					if(inRect(x, y, .cx-bw2, .cy-bh2, .cx+bw2, .cy+bh2))
+					{
+						enterlayer.setPos(.cx-bw2-(edge>>1)+clipLeft,
+						.cy-bh2-(edge>>1)+clipTop+layertop);
+						enterlayer.visible	= true;
+						return;
+					}
+			}
+		}
+		detaillayer.visible	= false;	//	表示停止
+		enterlayer.visible	= false;
+	}
+
+	function onDoubleClick(x, y)
+	{
+		//	そのシーンへ移動する
+		//	手順としては、
+		//		1. 移動先のデータをFlowTrackerPluginにセットする。
+		//		2. 一度FlowTrackerPluginのmoveToAnotherSceneラベルへ移動する。
+		//		3. moveToAnotherSceneでは、スクリプト実行中ならreturn処理を行う。
+		//	これで、次のシーンとして任意のシーンが実行できる。
+		var flow	= flowdata;
+		var	bw2 = boxwidth>>1, bh2 = boxheight>>1;
+		x	-= clipLeft;
+		y	-= clipTop+layertop;
+		for(var i=0; i<flow.count; i++)
+		{
+			if(isVisibleObject(i))
+			{
+				with(flow[i])
+					if(inRect(x, y, .cx-bw2, .cy-bh2, .cx+bw2, .cy+bh2))
+					{
+						//	ダブルクリックした場所にあるシーンへ移動する
+						if(.type == "SCENE" || .type == "SELECTER" || .type == "OUTERLABEL")
+							flow_tracker_object.current	= i;
+						window.process("FlowTrackerPlugin.ks", "*moveToAnotherScene");
+						return;
+					}
+			}
+		}
+	}
+
+	function onTimer()
+	{
+//		dm("timer end");
+		detailtimer.enabled	= false;
+		with(detaillayer)
+		{
+			.draw(detailId);
+			//	左上に表示
+			var l = .parent.cursorX, t = .parent.cursorY-.height;
+			if(l+.width>.parent.width)	l -= .width;	//	左に表示できない→右側
+			if(t<0)						t += .height;	//	上に表示できない→下側
+			.setPos(l, t);
+			.visible	= true;
+		}
+	}
+
+	function initFlowChart(flow, cur)
+	{
+		flowdata	= flow;
+		drawFlowChart(cur);
+	}
+
+	function drawFlowChart(cur=current)
+	{
+		var	flow= flowdata;
+		var	lc	= linecolor;
+
+		//	必要なサイズを得る
+		var ml=10000, mt=10000, mr=-10000, mb=-10000;
+		var	bw	= boxwidth, bw2 = bw>>1;
+		var	bh	= boxheight, bh2 = bh>>1;
+		for(var i=0; i<flow.count; i++)
+		{
+			if(isVisibleObject(i))
+			{
+				with(flow[i])
+				{
+					.cx	= .left + .width\2;
+					.cy	= .top + .height\2;
+					if(ml>.cx-bw2)	ml	= .cx-bw2;
+					if(mr<.cx+bw2)	mr	= .cx+bw2;
+					if(mt>.cy-bh2)	mt	= .cy-bh2;
+					if(mb<.cy+bh2)	mb	= .cy+bh2;
+				}
+			}
+		}
+		ml	-= margin<<1;
+		mt	-= margin<<1;
+		mr	+= margin<<1;
+		mb	+= margin<<1;
+
+		//	拡大率(左右の幅であわせる)
+		var	mag	= clipWidth / (mr - ml);
+
+		//	中心座標を補正
+		for(var i=0; i<flow.count; i++)
+		{
+			if(isVisibleObject(i))
+			{
+				with(flow[i])
+				{
+					.cx	= int((.cx - ml) * mag);
+					.cy	= int((.cy - mt) * mag);
+				}
+			}
+		}
+
+		//	レイヤーを用意する
+		layer	= new global.Layer(window, this) if layer==void;
+		with(layer)
+		{
+			.setSize(clipWidth, (mb - mt) * mag);
+			.fillRect(0, 0, .width, .height, bgcolor);
+		}
+
+		//	ラインを描画
+		var	slfh = selecterfontheight, slfh2 = slfh>>1;
+		var	ac	= alternativecolor;
+		for(var i=0; i<flow.count; i++)
+		{
+			if(flow[i]==void)	continue;
+			with(flow[i])
+			{
+				if(.type=="SCENE")
+				{
+					var x0 = .cx, y0 = .cy;
+					for(var j=0; j<.jump.count; j++)
+					{
+						var	trg	= .jump[j].target;	//	移動先
+						if(isVisibleObject(trg))
+						{
+							with(flow[trg])
+							{
+								drawAALine(layer, x0, y0, .cx, .cy, lc);
+							}
+						}
+					}
+				}
+				else if(.type=="SELECTER")
+				{
+					var x0 = .cx, y0 = .cy;
+					for(var j=0; j<.alternative.count; j++)
+					{
+						var	trg	= .alternative[j].target;	//	選択時の移動先
+						if(isVisibleObject(trg))
+						{
+							with(flow[trg])
+							{
+								drawAALine(layer, x0, y0, .cx, .cy, lc);
+								var mx = (x0+.cx)>>1, my = (y0+.cy)>>1;
+								with(layer)
+								{
+									.fillRect(mx-slfh2, my-slfh2, slfh, slfh, lc);
+									.font.height	= slfh;
+									var fw	= .font.getTextWidth(j+1);
+									.drawText(mx-slfh2+((slfh-fw)>>1), my-slfh2, j+1, ac);
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
+		//	シーン、選択肢を描画
+		var	scc	= scenecolor;
+		var	slc	= selectercolor;
+		var	olc	= outerlabelcolor;
+		var	ifh	= idfontheight;
+		var	ic	= idcolor;
+		layer.font.height	= ifh;
+		var	file= Storages.extractStorageName(Storages.chopStorageExt(plugin.flowfile));
+		for(var i=0; i<flow.count; i++)
+		{
+			if(flow[i]==void)	continue;
+			with(flow[i])
+			{
+				if(.type=="SCENE")
+					drawEdgeRect(layer, .cx - bw2, .cy - bh2, bw, bh, scc, 1, lc);
+				else if(.type=="SELECTER")
+					drawEdgeRect(layer, .cx - bw2, .cy - bh2, bw, bh, slc, 2, lc);
+				else if(.type=="OUTERLABEL")
+					drawEdgeRect(layer, .cx - bw2, .cy - bh2, bw, bh, olc, 3, lc);
+				with(layer)
+				{
+					var	fw	= .font.getTextWidth(i);
+					.drawText(flow[i].cx-bw2+((bw-fw)>>1), flow[i].cy-bh2+((bh-ifh)>>1), i, ic);
+				}
+
+				var fn = "trail_"+file+"-"+(i<10 ? "0" : "")+i+".ks";
+				if(sf[fn])
+				{
+					//	このシーン、選択肢を通過済み
+					var ptx = .cx+bw2, pty = .cy-bh2;
+					drawLine(layer, ptx, pty, ptx-1, pty-4, lc);
+					drawLine(layer, ptx, pty, ptx+6, pty-6, lc);
+					drawLine(layer, ptx+1, pty, ptx+6, pty-5, lc);
+					layer.setMainPixel(ptx, pty-2, lc&0xFFFFFF);
+				}
+			}
+		}
+
+		//	背景を綺麗に
+		fillRect(0, barheight, width, height-barheight, bgcolor);
+
+		_current	= void;	//	エラー回避
+		_layertop	= -1;	//	確実に更新させるため
+		layertop	= 0;
+		_current	= -1;	//	確実に更新させるため
+		current		= cur;
+		visible		= true;
+	}
+
+	function moveCursor(cx, cy, time=defaulttime, accel=defaultaccel)
+	{
+		with(cursorlayer)
+		{
+			var	l	= clipLeft+cx-(.width>>1);
+			var	t	= clipTop+layertop+cy-(.height>>1);
+			if(time>0)
+				.move(l, t, cursoropac, time, accel);
+			else
+				.left	= l, .top	= t;
+			.visible	= true;
+		}
+	}
+
+	function isVisibleObject(no)
+	{
+		var	flow	= flowdata;
+		return flow!=void && no>=0 && no<flow.count && flow[no]!=void &&
+			(flow[no].type=="SCENE" || flow[no].type=="SELECTER" || flow[no].type=="OUTERLABEL");
+	}
+
+	property layertop
+	{
+		setter(lt)
+		{
+//			dm(@"layertop: ${_layertop} to ${lt}");
+			if(lt != _layertop)
+			{
+				if(layer.height+lt<clipHeight)	lt	= clipHeight - layer.height;
+				if(lt>0)	lt	= 0;
+				_layertop	= lt;
+				copyRect(clipLeft, clipTop + lt, layer, 0, 0, layer.width, layer.height);
+				if(current !== void)
+					with(flowdata[current])	moveCursor(.cx, .cy, 0);
+			}
+		}
+		getter	{ return _layertop; }
+	}
+
+	property current
+	{
+		setter(c)
+		{
+			dm(@"change: ${_current} => ${c}");
+			var	flow	= flowdata;
+			if(!isVisibleObject(c))	return;
+			flow	= flow[c];
+			if(c != _current)
+			{
+				//	カーソルをシーン・選択肢へ移動させる
+				moveCursor(flow.cx, flow.cy);
+				_current	= c;
+			}
+		}
+		getter	{ return _current; }
+	}
+
+/*	property isShlink
+	{
+		setter(s)
+		{
+			if(_isShlink != s)
+			{
+				if(_isShlink = s)	height	= barheight;
+				else				height	= imageHeight;
+			}
+		}
+		getter	{ return _isShlink; }
+	}*/
+}
+
+//	フラグの状態を表示するレイヤー
+class FlagListLayer extends FadeLayer
+{
+	var	showopac	= 160;
+	var	bgcolor		= 0xFF8080 | (showopac<<24);
+	var	textcolor	= 0x000000;
+	var	barcolor	= 0xFFFF00 | (showopac<<24);
+	var	changedcolor= 0x0080FF;// | (showopac<<24);
+	var	barwidth	= 16;
+	var	fontheight	= 12;
+	var	spacing		= 2;
+	var	undermargin	= 48;
+	var	hideopac	= 64;
+	var	deftime		= 200;
+	var	defaccel	= 2;
+
+	var	plugin;		//	フローチャートプラグイン
+
+	var	lastflagcount;	//	前回描画した時のフラグの数
+	var	namewidth;		//	フラグ名を描画する場所の幅
+	var	paramwidth;		//	値を描画する場所の幅
+
+	var isShow;		//	画面内に出てきているか？
+
+	var	lastflag;	//	直前のフラグ状態
+
+	var	_indicateflag;	//	カーソルが乗っているフラグ
+
+	function FlagListLayer(win, par, plugin)
+	{
+		super.FadeLayer(...);
+		this.plugin	= plugin;
+
+		_indicateflag	= -1;
+		init();
+	}
+
+	function finalize()
+	{
+		super.finalize(...);
+	}
+
+	function init()
+	{
+		lastflagcount	= -1;
+		lastflag	= %[];
+		update();
+		setPos(parent.width-barwidth, parent.height-height-undermargin);
+		isShow	= false;
+		opacity	= hideopac;
+	}
+
+	function draw()
+	{
+		var	flist	= plugin.flagnames;
+		var	f = .f, sf = .sf;
+		var	fh	= fontheight;
+		var	bw	= barwidth;
+		var	spc	= spacing;
+		var	tc	= textcolor;
+
+		//	フラグの数が変化した時
+		if(flist.count!==lastflagcount)
+		{
+			//	レイヤーサイズを変更
+			var	maxw	= 0;
+			font.height	= fh;
+			for(var i=0; i<flist.count; i++)
+			{
+				var	fw	= font.getTextWidth(flist[i]);
+				maxw	= fw if(maxw<fw);
+			}
+			namewidth	= maxw;
+			paramwidth	= font.getTextWidth("false");
+			var	w	= bw + namewidth + paramwidth + spc * 3;
+			var	h	= flist.count * (fh + spc) + spc;
+			setSize(w, h);
+			lastflagcount	= flist.count;
+
+			//	背景を綺麗に
+			fillRect(0, 0, bw, h, barcolor);
+			var	title	= "フラグリスト";
+			var	tt		= spc;
+			for(var i=0; i<title.length; i++)
+			{
+				drawText((bw-font.getTextWidth(title[i]))>>1, tt, title[i], textcolor);
+				tt	+= font.height;
+			}
+			fillRect(bw, 0, width, height, bgcolor);
+
+			//	フラグリストを更新
+			var	t = spc;
+			for(var i=0; i<flist.count; i++)
+			{
+				drawText(bw + spc, t, flist[i], tc);
+				t	+= fh + spc;
+			}
+
+			//	高さにあわせて表示位置を変更
+			move(isShow ? parent.width-width : parent.width-bw,
+				parent.height - height - undermargin, opacity, deftime, defaccel);
+		}
+
+		//	パラメータを更新
+		var	l = bw+namewidth+(spc<<1), t = spc;
+		var	w = paramwidth, h = fh;
+		for(var i=0; i<flist.count; i++)
+		{
+			//	過去の値を消す
+			fillRect(l, t, w, h, bgcolor);
+
+			//	カーソルが乗っているパラメータを囲う
+			if(i == indicateflag)
+				drawEdge(this, l, t, w, h, 1, 0x80FF0000);
+
+			//	値を取得
+			var	value;
+			var	flname	= flist[i];
+			if(flname[0] == "g")	value	= sf[flname]+0;
+			else					value	= f[flname]+0;
+//			if(flname.substr(flname.length-3) != "好感度")
+//				value	= value>0 ? "True" : "False";
+
+			//	値を描画
+			tc	= lastflag[flname]!=value ? changedcolor : textcolor;	//	値が変化したら色換え
+			drawText(l+w-font.getTextWidth(value)-(spc<<1), t, value, tc);
+
+			lastflag[flname]	= value;
+			t	+= fh + spc;	//	次へ
+		}
+	}
+
+	function addFlagValue(name, value)
+	{
+		var	flag	= name[0] == "g" ? .sf : .f;
+		flag[name]	+= value;
+		draw();	//	更新
+	}
+
+	function onMouseDown(x, y, button, shift)
+	{
+		if(button == mbLeft)
+		{
+			if(!isShow)
+			{
+				//	開く
+				move(parent.width-width, top, 255, deftime, defaccel);
+				isShow	= true;
+			}
+			else if(indicateflag>=0)
+			{
+				//	値を増加させる
+				addFlagValue(plugin.flagnames[indicateflag], 1);
+			}
+		}
+		else if(button == mbRight)
+		{
+			if(indicateflag>=0)
+			{
+				//	値を減少させる
+				addFlagValue(plugin.flagnames[indicateflag], -1);
+			}
+			else if(isShow)
+			{
+				//	閉じる
+				move(parent.width-barwidth, top, hideopac, deftime, defaccel);
+				isShow	= false;
+			}
+		}
+	}
+
+	function onMouseMove(x, y)
+	{
+		if(x>barwidth+namewidth+spacing)
+			indicateflag	= y \ (font.height + spacing);
+		else
+			indicateflag	= -1;
+	}
+
+	function onMouseLeave()
+	{
+		indicateflag	= -1;
+	}
+
+	function onPaint()
+	{
+		super.onPaint(...);
+		draw();
+	}
+
+	property indicateflag
+	{
+		setter(f)
+		{
+			if(_indicateflag != f)
+			{
+				_indicateflag	= f;
+				draw();
+			}
+		}
+		getter	{ return _indicateflag; }
+	}
+}
+
+//	シーンの詳細(タイトル、フラグ処理、分岐)を表示する
+//	選択肢や外部ラベルにも対応
+class SceneDetailLayer extends FadeLayer
+{
+	var	showopac	= 160;
+	var	bgcolor		= 0xFFFFFF | (showopac<<24);
+	var	titlecolor	= 0xFF80FF | (showopac<<24);
+	var	textcolor	= 0x000000;
+	var	fontheight	= 12;
+	var	basewidth	= 200;
+	var	spacing		= 2;
+
+	var	plugin;
+	var	owner;		//	雇用主となるFlowChartLayer
+
+	var	lastflow, lastid;
+
+	function SceneDetailLayer(win, par, plugin, owner)
+	{
+		super.FadeLayer(...);
+		this.plugin	= plugin;
+		this.owner	= owner;
+
+		hitType		= htMask;
+		hitThreshold= 256;
+		font.height	= fontheight;
+		opacity		= 255;
+	}
+
+	function finalize()
+	{
+		super.finalize(...);
+	}
+
+	function draw(id)
+	{
+		//	描画可能かチェック(同じか、描画範囲を超えてないか)
+		if(id==lastid && lastflow==plugin.flowfile)	return;
+		var	flow	= plugin.flow;
+		if(id<0 || id>=flow.count || flow[id]==void)	return;
+
+		with(flow[id])
+		{
+			var	fgtw= font.getTextWidth;
+			var	bw	= basewidth;
+			var	fh	= fontheight;
+			var	spc	= spacing;
+			var	lines;
+			var	title;
+
+			//	シーン(タイトル、フラグ処理、分岐)を表示
+			if(.type=="SCENE")
+			{
+				//	タイトル
+				lines	= divideAccordingToWidth(.title, bw, fgtw);
+
+				//	フラグ処理
+				for(var i=0; i<.flagoperation.count; i++)
+					lines.add("●"+.flagoperation[i].operation);
+
+				//	分岐
+				for(var i=0; i<.jump.count; i++)
+				{
+					var	bif	= .jump[i].bifurcation;
+					if(bif!="")
+					{
+						var tmp	= divideAccordingToWidth(bif, bw-fgtw("　"), fgtw);
+						lines.add("○"+tmp[0]);
+						for(var j=1; j<tmp.count; j++)
+							lines.add("　"+tmp[j]);
+						lines.add("　→ "+.jump[i].target);
+					}
+					else
+					{
+						if(.jump.count>1)
+							lines.add("○無条件");
+						lines.add("　→ "+.jump[i].target);
+					}
+				}
+
+				title	= id+": シーン";
+			}
+			//	選択肢(タイトル、選択肢の内容)を表示
+			else if(.type=="SELECTER")
+			{
+				//	タイトル
+				lines	= divideAccordingToWidth(.title, bw, fgtw);
+
+				//	選択肢
+				for(var i=0; i<.alternative.count; i++)
+				{
+					var	tmp	= divideAccordingToWidth(.alternative[i].text, bw-fgtw("　"), fgtw);
+					lines.add((i+1)+"."+tmp[0]);
+					for(var j=1; j<tmp.count; j++)
+						lines.add("　"+tmp[j]);
+					lines.add("　→ "+.alternative[i].target);
+				}
+
+				title	= id+": 選択肢";
+			}
+			//	外部ラベル(移動先ファイル、ID)を表示
+			else if(.type=="OUTERLABEL")
+			{
+				//	移動先ファイルと移動先のシーンID
+				lines	= [.file+"の"+.target+"へ"];
+
+				title	= id+": 外部接続";
+			}
+
+			//	レイヤーサイズの変更
+			var	h	= (1 + lines.count) * (fh + spc) + (spc<<1);
+			setSize(bw + (spc<<1), h);
+
+			//	背景
+			fillRect(0, 0, width, fh+(spc<<1), titlecolor);
+			fillRect(0, fh+(spc<<1), width, height, bgcolor);
+
+			//	文
+			drawText(spc, spc, title, textcolor);	//	タイトル
+			var	t	= fh+spc*3;
+			for(var i=0; i<lines.count; i++)
+			{
+				drawText(spc, t, lines[i], textcolor);
+				t	+= fh+spc;
+			}
+		}
+
+		//	FlowChartLayerと同じ親を持つ
+		parent	= owner.parent;
+	}
+}
+
+/*----------------------------------------------------------------------------/
+/	
+/----------------------------------------------------------------------------*/
+@endif

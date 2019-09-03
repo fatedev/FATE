@@ -1,0 +1,1183 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) TYPE-MOON All Rights Reserved.
+/		ステータスメニュー
+/----------------------------------------------------------------------------*/
+@if(__STATUSMENULAYER_DEFINED__==0)
+@set(__STATUSMENULAYER_DEFINED__=1)
+
+Scripts.execStorage("MenuManager.tjs");
+Scripts.execStorage("StatusParameterLayer.tjs");
+Scripts.execStorage("StatusButtonLayer.tjs");
+Scripts.execStorage("PageNaviLayer.tjs");
+Scripts.execStorage("MenuBackButtonLayer.tjs");
+
+class StatusMenuLayer extends MenuManager
+{
+	var name	= "ステータスメニューレイヤー";
+
+	var ServantParameters = %[// STR  CON  AGI  MGI  LCK  SP
+		"セイバー"		=> [ "B", "C", "C", "B","B","C" ],
+		"ダークセイバー"=> [ "A", "A", "D", "A++","C","A++" ],
+		"アーチャー"	=> [ "D", "C", "C", "B", "E", "？" ],
+		"ライダー"		=> [ "C", "E", "B", "B", "D","A+" ],
+		"ランサー"		=> [ "B", "C", "A", "C", "E", "B" ],
+		"キャスター"	=> [ "E", "D", "C","A+", "B", "C" ],
+		"アサシン"		=> [ "C", "E","A+", "E", "A", "？" ],
+		"バーサーカー"	=> [ "A+", "A", "A", "A", "B", "A" ],
+		"ギルガメッシュ"=> [ "B", "C", "C", "B", "A","EX" ],
+		"真アサシン"	=> [ "B", "C", "A", "C", "E", "C" ],
+	];
+	var ServerParameterPositions	= [
+		[ 421, 301 ], [ 421, 324 ], [ 421, 347 ],
+		[ 716, 301 ], [ 716, 324 ], [ 716, 347 ]
+	];
+	var ServantMasters	= %[
+		"セイバー"		=> "衛宮士郎",	//	遠坂凛(契約時)キャスター(オルタ時)桜(ダーク時)
+		"ダークセイバー"=> "間桐桜",
+		"アーチャー"	=> "遠坂凛",	//	キャスター
+		"ライダー"		=> "間桐慎二",	//	間桐桜
+		"ランサー"		=> "言峰綺礼",
+		"キャスター"	=> "葛木宗一郎",
+		"アサシン"		=> "キャスター",
+		"バーサーカー"	=> "イリヤ",
+		"ギルガメッシュ"=> "言峰綺礼",
+		"真アサシン"	=> "間桐臓硯",
+	];
+	var ServantSexs	= %[
+		"セイバー"		=> "女性",
+		"ダークセイバー"=> "女性",
+		"アーチャー"	=> "男性",
+		"ライダー"		=> "女性",
+		"ランサー"		=> "男性",
+		"キャスター"	=> "女性",
+		"アサシン"		=> "男性",
+		"バーサーカー"	=> "男性",
+		"ギルガメッシュ"=> "男性",
+		"真アサシン"	=> "男性",
+	];
+	var ServantAttributes	= %[
+		"セイバー"		=> "秩序・善",
+		"ダークセイバー"=> "秩序・悪",
+		"アーチャー"	=> "中立・中庸",
+		"ライダー"		=> "混沌・善",
+		"ランサー"		=> "秩序・中庸",
+		"キャスター"	=> "中立・悪",
+		"アサシン"		=> "中立・悪",
+		"バーサーカー"	=> "混沌・狂",
+		"ギルガメッシュ"=> "混沌・善",
+		"真アサシン"	=> "秩序・悪",
+	];
+	var ServantSystemicPosition	= [ 460, 0 ];
+	var ServantSpecials	= %[
+						//	宝具名＋ページ数, ...
+		"セイバー"		=> [ "風王結界", "エクスカリバー", "アヴァロン" ],
+		"ダークセイバー"=> [ "ダークカリバー" ],
+		"アーチャー"	=> [ "無限の剣製" ],
+		"ライダー"		=> [ "暗黒神殿", "騎英の手綱", "鮮血神殿" ],
+		"ランサー"		=> [ "ゲイボルク", "グングニール" ],
+		"キャスター"	=> [ "ルールブレイカー" ],
+		"アサシン"		=> [ ],
+		"バーサーカー"	=> [ "十二の試練", "十二の試練(裏)" ],
+		"ギルガメッシュ"=> [ /*"エヌマ・エリシュ", */"王の財宝", "エヌマ・エリシュ" ],
+		"真アサシン"	=> [ "妄想心音" ],
+	];
+	var ServantSpecialPosition	= [ 499, 28 ];
+	var ServantSpecialPages	= %[
+		//宝具名			説明ページ数
+		"風王結界"		=> 3,
+		"エクスカリバー"=> 2,
+		"アヴァロン"	=> 2,
+		"干将・莫耶"	=> 1,
+		"無限の剣製"	=> 1,
+		"暗黒神殿"		=> 1,
+		"騎英の手綱"	=> 1,
+		"鮮血神殿"		=> 1,
+		"ゲイボルク"	=> 2,
+		"グングニール"	=> 2,
+		"ルールブレイカー"=> 1,
+		"十二の試練"	=> 1,
+		"十二の試練(裏)"=> 1,
+		"エヌマ・エリシュ"=> 2,
+		"王の財宝"		=> 1,
+		"妄想心音"		=> 2,
+		"ダークカリバー"=> 1,
+	];
+	var ServantDetailPages	= %[
+		"セイバー"		=> 9,
+		"ダークセイバー"=> 1,
+		"アーチャー"	=> 1,
+		"ライダー"		=> 3,
+		"ランサー"		=> 9,
+		"キャスター"	=> 7,
+		"アサシン"		=> 3,
+		"バーサーカー"	=> 6,
+		"ギルガメッシュ"=> 6,
+		"真アサシン"	=> 4,
+	];
+	var ServantSkillPages	= %[
+		"セイバー"		=> 3,
+		"ダークセイバー"=> 3,
+		"アーチャー"	=> 3,
+		"ライダー"		=> 4,
+		"ランサー"		=> 5,
+		"キャスター"	=> 2,
+		"アサシン"		=> 4,
+		"バーサーカー"	=> 4,
+		"ギルガメッシュ"=> 3,
+		"真アサシン"	=> 3,
+	];
+	var ServantNames	= [
+		"セイバー", "ランサー", "アーチャー", "ライダー", "キャスター",
+		"アサシン", "バーサーカー", "ギルガメッシュ", "真アサシン", "ダークセイバー"
+	];
+	var ServantNames4Hint	= [
+		"セイバー", "ランサー", "アーチャー", "ライダー", "キャスター",
+		"アサシン", "バーサーカー", "アーチャー", "アサシン", "セイバー"
+	];
+	var ServantClass	= %[
+		"セイバー"		=> "セイバー",
+		"ダークセイバー"=> "セイバー",
+		"アーチャー"	=> "アーチャー",
+		"ライダー"		=> "ライダー",
+		"ランサー"		=> "ランサー",
+		"キャスター"	=> "キャスター",
+		"アサシン"		=> "アサシン",
+		"バーサーカー"	=> "バーサーカー",
+		"ギルガメッシュ"=> "アーチャー",
+		"真アサシン"	=> "アサシン",
+	];
+	var ModeNames	= [ "能力", "詳細", "技能", "宝具" ];
+	var ModeHint	= [
+		"各種パラメータやクラスに付随する能力について表示します。",
+		"英雄の詳細について表示します。",
+		"英霊の持つ技能について表示します。",
+		"所有する宝具について表示します。"
+	];
+
+	var firstmode;
+
+	var _curservant, lastservant;	//	選ばれているサーバント、直前の記録
+	var _curmode, lastmode;			//	選ばれているモード、直前の記録
+	var _curspecial;
+
+	var servantbuttons;
+	var modebuttons;
+	var backbutton;
+
+	var items;
+	var detailmenu_items;
+	var skillmenu_items;
+	var specialmenu_items;
+
+	var H	= "ss_";
+	var crfd= "crossfade";
+	var univ= "universal";
+	var r2l	= "r2l_ss";
+	var l2r	= "l2r_ss";
+
+	var flags;
+	var baseflags;
+
+	var timer;
+	var nextFocusedLayer;
+
+	var skillcount;		//	現在選択されているサーヴァントの、表示可能なスキルの数
+	var lastskillno;	//	直前に選択していたスキルの番号
+
+	var showed;
+
+	var pagenum;	//	ページ数
+	var pagenavi;	//	現在利用中のページナビレイヤー
+	var specialbuttons;	//	宝具選択ボタン
+
+	var parambar;
+
+	function StatusMenuLayer(win, par, type)
+	{
+		.sml = this;
+		super.MenuManager(win, par, void);
+
+		//	状態復帰
+		with(baseflags = type == "global" ? sf : f)
+		{
+			lastmode = _curmode = firstmode	= .lastSelectedMode===void ? "能力" : .lastSelectedMode;
+			_curservant = .lastSelectedServant===void ? "セイバー" : .lastSelectedServant;
+			_curspecial = .lastSelectedSpecial===void ? "風王結界" : .lastSelectedSpecial;
+
+			flags	= .servant;
+		}
+
+		items	= %[ "能力" => [], "詳細" => [], "技能" => [], "宝具" => [] ];
+		curlayer.opacity	= 0;	//	こうしないと、既に開いていると判断されてしまう(TitleMenuに)
+
+		//	セイバーオルタはセイバーの既知情報を引き継ぐ
+		var saber	= flags["セイバー"];
+		var alter	= flags["ダークセイバー"];
+//		if(!alter.cansee)
+//		{
+			//	ただし、セイバーオルタが表示されてない時のみ
+/*			var skill	= ServantSkills[0];
+			for(var i=0; i<skill.count; i++)
+				alter.skill[i]	|= saber.skill[i];
+			var sp	= ServantSpecials["セイバー"];
+			for(var i=0; i<sp.count; i++)
+				alter.Special[sp[i]]	|= saber.Special[sp[i]];
+*/			alter.truename	|= saber.truename;
+			//	ゲームメニューでは、セイバーとオルタは同時に見れない
+			if(type != "global")
+				saber.cansee	= !alter.cansee;	//	オルタが表示されるなら、セイバーは非表示
+			if(!saber.cansee && curservant=="セイバー")
+			{
+				_curservant	= "ダークセイバー";		//	セイバーが表示できない時はオルタを表示
+				_curspecial	= "";
+			}
+			else if(!alter.cansee && curservant=="ダークセイバー")
+				_curservant	= "セイバー";
+//		}
+		if(type!= "global" && flags["真アサシン"].cansee)
+		{
+			flags["アサシン"].cansee	= false;
+			_curservant	= "真アサシン" if curservant == "アサシン";	//	アサシンが選ばれていたら、真アサシンを表示
+		}
+
+		//	イレギュラーな場合はココで修正
+		if(type != "global")
+		{
+			if(baseflags.masterRin)
+			{
+				ServantMasters["セイバー"]	= "遠坂凛";
+				ServantParameters["セイバー"]	= [ "A", "B", "B", "A", "A+", "A++" ];
+			}
+			else if(baseflags.masterCaster)
+			{
+				ServantMasters["セイバー"]	= "キャスター";
+				ServantParameters["セイバー"]	= [ "B", "C", "C", "B","B","C" ];
+			}
+			if(baseflags.archerMasterCaster)
+			{
+				ServantMasters["アーチャー"]	= "キャスター";
+			}
+		}
+		if(baseflags.masterSakura)
+		{
+			ServantMasters["ライダー"]	= "間桐桜";
+			ServantParameters["ライダー"]	= [ "B", "D", "A", "B", "E", "A+" ];
+		}
+
+		//	バーサーカー宝具
+		if(flags["バーサーカー"].Special["十二の試練(裏)"])
+			flags["バーサーカー"].Special["十二の試練"]	= false;
+
+		//	パラメータバーを読み込んでおく
+		with(parambar = new global.Layer(window, curlayer))
+		{
+			.loadImages("ss_パラメータバー");
+			.setSizeToImageSize();
+		}
+	}
+
+	function finalize()
+	{
+		for(var i=0; i<ModeNames.count; i++)
+			eraseButtons(items[ModeNames[i]]);
+
+		with(baseflags)
+		{
+			.lastSelectedMode		= _curmode;
+			.lastSelectedServant	= _curservant;
+			.lastSelectedSpecial	= _curspecial;
+		}
+
+		release(parambar);
+		super.finalize(...);
+	}
+
+	//	stl = nextlayerのボタンは最初から表示された状態にしたいので、初期X座標を0に指定できるように
+	//		している。
+	function initServantButtons(stl=void)
+	{
+		//	サーヴァントボタン
+		var bl = -200, bt = 76, ti = 32;
+		var sn = ServantNames;
+		var snh= ServantNames4Hint;
+		var hint = "についてわかっている情報を表示します。";
+		var btns, btn;
+		var delay = 0;
+		var interval = 40;
+		for(var i=0; i<sn.count; i++)
+		{
+			if(flags[sn[i]].cansee)
+			{
+				//	サーヴァントを表示可能なら、ボタンを出す
+				if(btns==void)
+					btn = btns = servantbuttons = new StatusButtonLayer(window, parent, "s"+sn[i],
+						bl, bt, H+sn[i]+"ボタン", snh[i]+hint,, stl);
+				else
+					btn = btns.add("s"+sn[i], bl, bt, H+sn[i]+"ボタン", snh[i]+hint, stl);
+				with(btn)
+				{
+					.target	= this;
+					.open(delay += interval);
+				}
+				dm("add button("+btn.id+") because flags["+sn[i]+"] = true");
+			}
+			bt += ti;
+			if(i==6)
+				bt	+= 17;	//	イレギュラー組はちょっと離す
+		}
+		//	ボタンが選択可能であればONにする。
+		if(btn = btns.get("s"+curservant))
+			btn.on();
+		btns.onKeyDown	= function(key, shift)
+		{
+			if(key!=VK_UP)
+				global.StatusButtonLayer.onKeyDown(key, shift, true);
+		} incontextof btns;
+	}
+
+	function initModeButtons(stl=void)
+	{
+		//	モードボタン
+		var bl = -200, bt = 445, ti = 32;
+		var hint	= "について表示します。";
+		var mn = ModeNames;
+		var btns, btn;
+		var delay = 0;
+		var interval = 40;
+		for(var i=0; i<mn.count; i++)
+		{
+			if(btns==void)
+				btn = btns = modebuttons = new StatusButtonLayer(window, parent, "m"+mn[i], bl, bt,
+					H+mn[i]+"ボタン", ModeHint[i],, stl);
+			else
+				btn = btns.add("m"+mn[i], bl, bt, H+mn[i]+"ボタン", ModeHint[i], stl);
+			with(btn)
+			{
+				.target	= this;
+				.open(delay += interval);
+			}
+			bt += ti;
+		}
+		btns.get("m"+curmode).on();
+		btn = btns.get("m宝具");
+		btn.onKeyDown = function(key, shift)
+		{
+			with(target)
+			{
+				if(key==VK_DOWN && .curmode == "宝具" && .specialbuttons!==void)
+				{
+					.specialbuttons.focus();
+					return;
+				}
+				global.StatusButtonLayer.onKeyDown(key, shift, true);
+			}
+		} incontextof btn;
+	}
+
+	function initBackButtons()
+	{
+		//	戻るボタン
+		with(backbutton =
+			new MenuBackButtonLayer(window, parent,,706, 549, "ss_backボタン",,,4,585))
+		{
+			.target			= this;
+			.hitThreshold	= 0;
+			.onKeyDown	= function (key, shift)
+			{
+				with(target)
+				{
+					if((key == VK_LEFT || key == VK_UP) &&
+						.curmode=="宝具" && .specialbuttons!==void)
+					{
+						//	宝具ボタンが出現しているなら
+						var btn = .specialbuttons;
+						while(btn.bros)	btn	= btn.bros;
+						btn.focus();	//	最後の宝具ボタンへ移動
+					}
+					else
+						global.MenuBackButtonLayer.onKeyDown(key, shift, true);
+				}
+			} incontextof backbutton;
+			.open();
+		}
+	}
+
+	function show()
+	{
+		if(!showed)
+		{
+			showed	= true;
+			curlayer.focusable	= false;
+			nextlayer.visible;
+
+			//	各モードにあわせたアイテム
+			switch(firstmode)
+			{
+			case "能力":	initStatusMenu(curlayer);	break;
+			case "詳細":	initDetailMenu(curlayer);	break;
+			case "技能":	initSkillMenu(curlayer);	break;
+			case "宝具":	initSpecialMenu(curlayer);	break;
+			}
+
+			super.show();
+			if(typeof parent.enableButtons != "undefined")
+				parent.enableButtons(false);
+
+			initServantButtons();
+			initModeButtons();
+			initBackButtons();
+
+			moveCursor(curlayer, 51, 87);
+
+			//	現在選択されているサーヴァントのボタンに、強引にフォーカスを与える
+			curlayer.opacity	= 1;
+			curlayer.visible	= true;
+			servantbuttons.get("s"+curservant).focus();
+		}
+	}
+
+	function closeThis()
+	{
+		parent.closeChild(this);
+	}
+
+	//	サーバントを変える(宝具も)
+	function changeServant()
+	{
+/*		switch(curmode)
+		{
+		case "能力":	changeStatusMenuData();	break;
+		case "詳細":	changeDetailMenuData();	break;
+		case "技能":	changeSkillMenuData();	break;
+		case "宝具":	changeSpecialMenuData();break;
+		}
+*/
+	}
+
+	//	モードを変える
+	function changeMode(erasemode=lastmode)
+	{
+		nextlayer.focusable	= false;
+		closeButtons(items[erasemode]);	//	現在表示されているデータを閉じる
+		clearWiseup();
+
+		//	新しいデータを表示する
+		switch(curmode)
+		{
+		case "能力":	initStatusMenu(nextlayer);	break;
+		case "詳細":	initDetailMenu(nextlayer);	break;
+		case "技能":	initSkillMenu(nextlayer);	break;
+		case "宝具":	initSpecialMenu(nextlayer);	break;
+		}
+
+		super.change();
+	}
+
+	function setFocus_Delay(layer, interval=50)
+	{
+		nextFocusedLayer	= layer;
+		with(timer = new Timer(onTimer, ""))
+		{
+			.interval	= interval;
+			.enabled	= true;
+		}
+	}
+
+	function onTimer()
+	{
+		release(timer);
+		window.focusedLayer	= nextFocusedLayer;
+	}
+
+	function onPageChanged(navigator, pageno, lastno)
+	{
+		switch(curmode)
+		{
+		case "能力":	break;
+		case "詳細":	changeDetailPage(pageno, lastno);	break;
+		case "技能":	changeSkillPage(pageno,lastno);		break;
+		case "宝具":	changeSpecialPage(pageno, lastno);	break;
+		}
+	}
+
+	function hide()
+	{
+		if(showed)
+		{
+			showed	= false;
+			if(typeof parent.enableButtons != "undefined")
+				parent.enableButtons(true);
+			parent.onBeforeClose(this);
+
+			servantbuttons.execAll("close") if servantbuttons!==void;
+			modebuttons.execAll("close") if modebuttons!==void;
+			backbutton.close() if backbutton!==void;
+
+			super.hide(,,, onClosed);
+		}
+	}
+
+	function onClosed()
+	{
+		invalidate this;
+	}
+
+	//	アイテムを表示させる
+	//		画像ファイル、座標、遅延時間
+	//		親レイヤー、追加先、"wiseup"表示を可能にするか？
+	function InnerShowItem(disp, wiseup, storage, l, t, delay, layer, items, usewiseup=true)
+	{
+		var prm;
+		items.add(prm = new StatusParameterLayer(window, layer));
+		if(disp)
+			prm.open(storage, l, t, delay,, usewiseup, wiseup);
+		else
+			prm.init(l, t, usewiseup, false);
+	}
+
+	//	ポップアップなしでアイテムを表示させる
+	//	rect: 基本位置・サイズ
+	function InnerShowItemNoMove(disp, wiseup, storage, l, t, delay, layer, items)
+	{
+		var prm;
+		items.add(prm = new StatusParameterLayer(window, layer));
+		if(disp)
+			prm.open(storage, l, t, delay, true,, wiseup);
+		else
+			prm.init(l, t,, false);
+	}
+
+	function initStatusMenu(layer)
+	{
+		layer.loadImages(H+ServantClass[curservant]+"能力背景");
+		layer.setSizeToImageSize();
+
+		initStatusMenuData(layer);
+	}
+
+	function initStatusMenuData(layer, delay=0)
+	{
+		var items = this.items["能力"];
+		var delayinterval = 20;
+		var flags = this.flags[curservant];
+		var bl = 281, bt = 114, it = 35;
+		pagenum	= 0;
+		pagenavi= void;
+
+		//	クラス名(自明)
+		InnerShowItemNoMove(true, false, H+curservant+"クラス名", 240, 59, delay, layer, items);
+
+		//	マスター(わかった時)
+		var mastername = ServantMasters[curservant];
+		InnerShowItem(flags.master, !(flags.master&2), H+"マスター"+mastername, bl, bt, delay, layer, items);
+
+		//	真名(わかった時)
+		InnerShowItem(flags.truename, !(flags.truename&2), H+curservant+"真名", bl, bt+=it, delay, layer, items);
+
+		//	顔、性別、身長/体重、属性、パラメータ(遭遇した時判明)
+		var sp = ServantParameters[curservant];
+		var spp = ServerParameterPositions;
+		var faceleft = 554, facetop = 51;
+		var ec = flags.encount, wf = !(ec&2);
+		InnerShowItemNoMove(ec, wf, H+curservant+"顔", faceleft, facetop, delay, layer, items);
+		InnerShowItem(ec, wf, H+ServantSexs[curservant], bl, bt+=it, delay, layer, items);
+		InnerShowItem(ec, wf, H+curservant+"身長体重", bl, bt+=it, delay, layer, items);
+		InnerShowItem(ec, wf, H+ServantAttributes[curservant], bl, bt+=it, delay, layer, items);
+		InnerShowItemNoMove(ec, wf, H+curservant+"クラス能力", 176, 410, delay, layer, items);
+
+		//	(パラメータが)イレギュラーな場合はココで修正
+		var pb = parambar;
+		var pbwidth = pb.width \ 3, pbheight = pb.height \ 2;
+		var pbleft	= [ 232, 527 ], pbtop = [ 306, 329, 352 ], pbstep = 36;
+		var pbsl = [ 0, pbwidth, pbwidth, pbwidth, pbwidth*2 ];
+		addWiseup(window, layer, 185, 302, delay) if (ec&(1|8)) == 1;
+		for(var i=0; i<sp.count; i++)
+		{
+			InnerShowItem(ec, false, H+"パラメータ"+sp[i], spp[i][0], spp[i][1], delay, layer,
+				items, false);
+			delay	+= delayinterval;
+
+			if(ec)
+			{
+				//	パラメータバーの描画(背景に直接描く)
+				var l = pbleft[i\3], t = pbtop[i%3];
+				var p, st, j;
+				st	= sp[i]=="EX" ? pbheight : 0;
+				p	= sp[i]=="EX" ? 5 : 5 - (#sp[i] - #"A");
+				for(j=0; j<p-1; j++)
+				{
+					layer.pileRect(l, t, pb, pbsl[j], st, pbwidth, pbheight,, false);
+					l += pbstep;
+				}
+				st = pbheight if curservant=="バーサーカー";	//	狂化でランクアップしているので
+				layer.pileRect(l, t, pb, pbsl[j], st, pbwidth, pbheight,, false);
+			}
+		}
+
+		//	WiseUpを2度行わないように(f, sfともにセット)
+		flags.master	|= 2 if flags.master;
+		flags.truename	|= 2 if flags.truename;
+		flags.encount	|= 10 if flags.encount;	//	2:顔、性別など/4:全身、説明文/8:パラメータ
+/* 		if(flags.master)
+			f.servant.master |= 2, sf.servant.master |= 2;
+ 		if(flags.truename)
+			f.servant.truename |= 2, sf.servant.truename |= 2;
+ 		if(flags.master)
+			f.servant.encount |= 2, sf.servant.encount |= 2;
+*/	}
+
+	function initDetailMenu(layer)
+	{
+		layer.loadImages(H+ServantClass[curservant]+"一般背景");
+		layer.setSizeToImageSize();
+
+		initDetailMenuData(layer);
+	}
+
+	function initDetailMenuData(layer, delay=0)
+	{
+		var items = this.items["詳細"];
+		var flags = this.flags[curservant];
+		pagenum	= ServantDetailPages[curservant];	//	ページ数
+
+		//	真名
+//		InnerShowItemNoMove(flags.truename, H+curservant+"真名大", 160, 80, delay, layer, items);
+
+		//	全身
+		var ssp = ServantSystemicPosition;
+		InnerShowItemNoMove(flags.encount, !(flags.encount&4), H+curservant+"全身", ssp[0], ssp[1], delay, layer, items);
+
+		//	説明文
+		InnerShowItemNoMove(flags.truename, !(flags.truename&4), H+curservant+"詳細_0", 153, 64, delay, layer, items);
+
+		//	ページボタン
+		var it;
+		items.add(it = pagenavi = new PageNaviLayer(window, layer, this,
+			"ss_numfont", 9, "ss_left", "ss_right"));
+		it.init(228, 524, pagenum);
+		if(flags.truename && pagenum>1)
+			it.open();
+
+		//	WiseUpを2度行わないように
+		flags.encount	|= 4 if flags.encount;
+		flags.truename	|= 4 if flags.truename;
+/*		if(flags.encount)
+			f.servant.encount |= 2, sf.servant.encount |= 2;
+		if(flags.truename)
+			f.servant.encount |= 2, sf.servant.truename |= 2;
+*/	}
+
+	function changeDetailPage(pageno, lastno, delay=0)
+	{
+		var items	= this.items["詳細"];
+		var rule	= pageno>lastno ? r2l : l2r;
+//		items[2].change(H+curservant+"詳細_"+pageno, delay, false, univ, rule);
+		items[1].change(H+curservant+"詳細_"+pageno, delay, false, univ, rule);
+	}
+
+	function initSkillMenu(layer)
+	{
+		var sk = flags[curservant].skill;
+		var fname = H+ServantClass[curservant]+"一般背景";
+		for(var i=0; i<sk.count; i++)
+		{
+			if(sk[i])
+			{//	一つでも表示可能なスキルがあれば、保有背景にする
+				fname	= H+"保有背景"+curservant;
+				break;
+			}
+		}
+		layer.loadImages(fname);
+		layer.setSizeToImageSize();
+
+		initSkillMenuData(layer);
+	}
+
+	function initSkillMenuData(layer, delay=0)
+	{
+		var items = this.items["技能"];
+		var flags = this.flags[curservant];
+		pagenum	= ServantSkillPages[curservant];	//	ページ数
+
+		//	技能
+		var skillno	= -1;
+		var skillmax= pagenum;
+		skillcount	= 0;
+		for(var i=0; i<skillmax; i++)
+		{
+			dm("flags.skill["+i+"] = "+flags.skill[i]);
+			if(flags.skill[i])
+			{
+				skillno	= i if skillno<0;
+				skillcount++;
+			}
+		}
+		dm("skillno/lastskillno/skillcount = "+skillno+"/"+lastskillno+"/"+skillcount);
+		if(skillcount>0)
+		{
+			var fl = flags.skill[skillno];
+			InnerShowItemNoMove(fl, !(fl&2), H+curservant+"スキル_"+skillno, 156, 82,
+				delay, layer, items);
+			flags.skill[skillno]	|= 2;
+/*			if(flags.skill[skillno])
+				f.servant[curservant].skill[skillno] |= 2, sf.servant[curservant].skill[skillno] |= 2;*/
+			lastskillno	= skillno;
+
+		}
+
+		//	ページボタン
+		var it;
+		items.add(it = pagenavi = new PageNaviLayer(window, layer, this,
+			"ss_numfont", 9, "ss_left", "ss_right"));
+		it.init(228, 460, skillcount);
+		if(skillcount>1)
+			it.open();
+
+		//	WiseUpを2度行わないように
+//		flags.encount	|= 2 if flags.encount;
+/*		if(flags.encount)
+			f.servant.encount |= 2, sf.servant.encount |= 2;
+*/	}
+
+	function changeSkillPage(pageno, lastno, delay=0)
+	{
+		var items	= this.items["技能"];
+		var flags	= this.flags[curservant];
+		var rule;
+		var skillno	= lastskillno;
+		var skillmax= ServantSkillPages[curservant];
+		if(pageno>lastno)
+		{
+			rule	= r2l;
+			//	次に表示可能なスキルを探す
+			for(var i=lastskillno+1; i<skillmax; i++)
+			{
+				if(flags.skill[i])
+				{
+					skillno	= i;
+					break;
+				}
+			}
+		}
+		else
+		{
+			rule	= l2r;
+			for(var i=lastskillno-1; i>=0; i--)
+			{
+				if(flags.skill[i])
+				{
+					skillno	= i;
+					break;
+				}
+			}
+		}
+//		dm("pageno/lastpage = "+pageno+"/"+lastno);
+		dm("skillno/lastskillno = "+skillno+"/"+lastskillno);
+		if(lastskillno != skillno)
+		{
+			clearWiseup();	//	WiseUpを消しておく
+			items[0].change(H+curservant+"スキル_"+skillno, delay, !(flags.skill[skillno]&2), univ, rule);
+			flags.skill[skillno]	|= 2;
+/*			if(flags.skill[skillno])
+				f.servant[curservant].skill[skillno] |= 2, sf.servant[curservant].skill[skillno] |= 2;
+*/			lastskillno	= skillno;
+		}
+	}
+
+	function initSpecialMenu(layer)
+	{
+		layer.loadImages(H+ServantClass[curservant]+"一般背景");
+		layer.setSizeToImageSize();
+
+		initSpecialMenuData(layer);
+	}
+
+	function initSpecialMenuData(layer, delay=0)
+	{
+		var items = this.items["宝具"];
+		var sp = this.flags[curservant].Special;
+		var flag;
+		var ss = ServantSpecials[curservant];
+		if(ss.count>0)
+		{
+			_curspecial	= ss[0] if _curspecial=="";	//	指定が無ければ0番にする
+			flag	= sp[curspecial];
+			pagenum	= ServantSpecialPages[curspecial];	//	ページ数
+
+			//	表示可能でない宝具を選んでいる時は
+			if(!(flag&1))
+			{
+				//	いずれか表示可能な法具にする
+				var i;
+				for(i=0; i<ss.count; i++)
+				{
+					if(sp[ss[i]] & 1)
+					{
+						_curspecial	= ss[i];
+						break;
+					}
+				}
+				if(i>=ss.count)
+					_curspecial	= ss[0];
+				flag	= sp[curspecial];
+			}
+		}
+		else
+		{
+			_curspecial	= "";
+			flag	= false;
+			pagenum	= 1;
+		}
+		dm("curspecial = "+curspecial+"("+(typeof _curspecial)+")");
+
+		//	詳細
+		InnerShowItemNoMove(flag, !(flag&2), H+curspecial+"詳細_0", 149, 63, delay, layer, items);
+
+		//	詳細のページ数
+		var it;
+		items.add(it = pagenavi = new PageNaviLayer(window, layer, this,
+			"ss_numfont", 9, "ss_left", "ss_right"));
+		it.init(228, 393, curspecial!="" ? pagenum : 1);
+		if(flag && pagenum>1)
+			it.open();
+
+		//	仕様
+		InnerShowItemNoMove(flag, !(flag&2), H+curspecial+"仕様", 228, 442, delay, layer, items);
+
+		//	画像
+		var ssp = ServantSpecialPosition;
+		InnerShowItemNoMove(flag, !(flag&2), H+curspecial+"画像", ssp[0], ssp[1], delay, layer, items);
+
+		//	ボタン
+		makeSpecialSelectButtons(layer, delay);
+
+		//	WiseUpを2度行わないように
+		if(curspecial!="")
+		{
+			sp[curspecial]	|= 2 if sp[curspecial];
+/*			if(flags.Special[curspecial])
+				f.servant[curservant].Special[curspecial] |= 2, sf.servant[curservant].Special[curspecial] |= 2;
+*/		}
+	}
+
+	//	法具情報を変える
+	function changeSpecial(delay=0)
+	{
+		if(curmode != "宝具")
+			return;
+
+		var items = this.items["宝具"];
+		var sp = this.flags[curservant].Special;
+		var flag;
+		dm("curspecial = "+curspecial+"("+(typeof _curspecial)+")");
+		if(curspecial=="" && ServantSpecials[curservant].count>0)
+			_curspecial	= ServantSpecials[curservant][0];
+		if(curspecial!="")
+		{
+			flag	= sp[curspecial];
+			pagenum	= ServantSpecialPages[curspecial];	//	ページ数
+		}
+		else
+		{
+			flag	= false;
+			pagenum	= 1;
+		}
+		var no	= 0;
+
+		clearWiseup();	//	表示されている"wiseup"を消す
+
+		//	詳細
+		if(flag)items[no++].change(H+curspecial+"詳細_0", delay, !(flag&2), crfd);
+		else	items[no++].suppress(delay);
+
+		//	詳細のページ数
+		with(items[no++])
+		{
+			if(flag && pagenum>1)
+				.show(pagenum);
+			else
+				.hide();
+		}
+
+		//	仕様
+		if(flag)items[no++].change(H+curspecial+"仕様", delay, !(flag&2), crfd);
+		else	items[no++].suppress(delay);
+
+		//	画像
+		if(flag)items[no++].change(H+curspecial+"画像", delay, !(flag&2), univ, "sparm", 600);
+		else	items[no++].suppress(delay);
+
+		//	WiseUpを2度行わないように
+		if(curspecial!="")
+		{
+			sp[curspecial]	|= 2 if sp[curspecial];
+/*			if(flags.Special[curspecial])
+				f.servant[curservant].Special[curspecial] |= 2, sf.servant[curservant].Special[curspecial] |= 2;
+*/		}
+	}
+
+	function changeSpecialMenuData(delay=0)
+	{
+		changeSpecial();
+
+		//	ボタン
+		var items = this.items["宝具"];
+		var no = items.count-1;
+		if(items[no] instanceof "SpecialSelectButtonLayer")
+		{
+			items[no].close(300, 0);	//	消えたらinvalidateする
+			items.erase(no);
+		}
+		makeSpecialSelectButtons(, delay);
+	}
+
+	function changeSpecialPage(pageno, lastno, delay=0)
+	{
+		dm("special page: "+pageno);
+		var items	= this.items["宝具"];
+
+		var rule	= pageno>lastno ? r2l : l2r;
+
+		//	詳細のページを切り替える
+		if(this.flags[curservant].Special!=void && curspecial!="" &&
+			this.flags[curservant].Special[curspecial])
+			items[0].change(H+curspecial+"詳細_"+pageno, delay, false, univ, rule);
+	}
+
+	function makeSpecialSelectButtons(layer=void, delay=0)
+	{
+		if(layer==void)
+			layer	= curlayer;
+		var ss = ServantSpecials[curservant];
+		var btns;
+		var allwidth = 0;
+		var centerleft	= 353, top = 557;
+		var items = this.items["宝具"];
+		var flags	= this.flags[curservant].Special;
+		specialbuttons	= void;
+
+		if(ss.count<2)
+			return;
+
+		//	ボタンは複数あるときしか表示しない
+		var btncnt	= 0;
+		for(var i=0; i<ss.count; i++)
+		{
+			btncnt++ if(flags[ss[i]]);
+		}
+		if(btncnt<2)	return;
+
+		var btn;
+		for(var i=0; i<ss.count; i++)
+		{
+			if(flags[ss[i]])
+			{
+				var hint	= ss[i];
+				hint	= "ゲイボルク" if ss[i]=="グングニール";	//	投擲もゲイボルク
+				hint	= "十二の試練" if ss[i]=="十二の試練(裏)";	//	(裏)は無し
+				if(btns==void)
+					//	最初のボタン
+					btn = btns = new SpecialSelectButtonLayer(window, layer,
+						"a"+ss[i], 800, top, H+ss[i]+"ボタン", hint+"の情報を表示します。");
+				else
+					//	2個以後のボタン
+					btn = btns.add("a"+ss[i], 800, top, H+ss[i]+"ボタン",
+						hint+"の情報を表示します。");
+				with(btn)
+				{
+					.target	= this;
+					.hitThreshold	= 0;
+					.mode	= 2;
+					allwidth	+= .width;
+				}
+				if(ss[i]==curspecial)
+					btn.onWithoutOther();
+			}
+		}
+		var left = centerleft - allwidth \ 2;
+		btn = btns;
+		for(var i=0; i<ss.count; i++)
+		{
+			if(flags[ss[i]])
+			{
+				btn.left	= left;		//	位置決め
+				left	+= btn.width;
+				btn		= btn.bros;		//	次のボタンへ
+			}
+		}
+		specialbuttons = items[items.count] = btns;
+		btns.show(300, 0) if btns!=void;
+	}
+
+	function onMouseDown(x, y, button, shift)
+	{
+		if(!showed)	return;
+		if(button == mbRight)
+			closeThis();
+	}
+
+	function onKeyDown(key, shift)
+	{
+		if(!showed)	return;
+		var proceed	= true;
+		switch(key)
+		{
+		case VK_ESCAPE:
+//		case VK_DELETE:
+//		case VK_BACK:
+		case VK_HOME:
+			proceed	= false;
+			break;
+		}
+	}
+
+	function onButtonDown(btn)
+	{
+		if(!showed)	return;
+		var type	= btn.id[0];
+		var id;
+		dm("on button down: "+btn.id);
+		switch(type)
+		{
+		case "s":	//	サーバント
+			curservant	= btn.id.substr(1);
+			break;
+		case "m":	//	モード
+			curmode	= btn.id.substr(1);
+			break;
+		case "a":	//	宝具
+			curspecial	= btn.id.substr(1);
+			break;
+		case "b":	//	戻る？
+			if(btn.id=="back")
+				closeThis();
+			break;
+		}
+	}
+
+	property curservant
+	{
+		setter(s)
+		{
+			if(s != _curservant)
+			{
+				lastservant	= _curservant;
+				_curservant	= s;
+//				var cs = _curspecial;
+				_curspecial	= "";
+				if(ServantSpecials[s]!=void)
+				{
+					for(var i=0; i<ServantSpecials[s].count; i++)
+					{
+						//	フラグONの宝具を現在の法具に選ぶ
+						if(flags[_curservant].Special[ServantSpecials[s][i]])
+						{
+							_curspecial	= ServantSpecials[s][i];
+							break;
+						}
+					}
+				}
+//				dm(cs+" -> "+_curspecial);
+				changeMode(curmode);
+			}
+		}
+		getter { return _curservant; }
+	}
+
+	property curmode
+	{
+		setter(m)
+		{
+			if(m != _curmode)
+			{
+				lastmode	= _curmode;
+				_curmode	= m;
+				changeMode();
+			}
+		}
+		getter	{ return _curmode; }
+	}
+
+	property curspecial
+	{
+		setter(s)
+		{
+			if(s != _curspecial)
+			{
+				var sps = ServantSpecials[curservant];
+				for(var i=0; i<sps.count; i++)
+				{
+					if(sps[i] == s)
+					{
+//						dm(_curspecial+" -> "+s);
+						_curspecial	= s;
+						changeSpecial();	dm("change special.");
+						break;
+					}
+				}
+			}
+		}
+		getter	{ return _curspecial; }
+	}
+
+	property opacity
+	{
+		setter(o)	{ curlayer.opacity = o; }
+		getter		{ return curlayer.opacity; }
+	}
+}
+
+class SpecialSelectButtonLayer extends ExButtonLayer
+{
+	function SpecialSelectButtonLayer()
+	{
+		super.ExButtonLayer(...);
+	}
+
+	function create(id, l, t, img, hint)
+	{
+		return new global.SpecialSelectButtonLayer(window, parent, id, l, t, img, hint, false);
+	}
+
+	function close(delay)
+	{
+		expunge(300, 0);
+	}
+
+	function onKeyDown(key, shift)
+	{
+		with(target)
+		{
+			if(key==VK_LEFT)
+			{
+				.pagenavi.prev() if .pagenavi!=void;
+				focus();	//	フォーカスを取り返す
+				return;
+			}
+			else if(key==VK_RIGHT)
+			{
+				.pagenavi.next() if .pagenavi!=void;
+				focus();	//	フォーカスを取り返す
+				return;
+			}
+			else if(key==VK_UP && !(prevFocusable instanceof "SpecialSelectButtonLayer"))
+			{
+				//	先頭の宝具ボタンで↑キーを押すと法具ボタンへ移動する
+				.modebuttons.get("m宝具").focus();	//
+				return;
+			}
+			else if(key==VK_DOWN && !(nextFocusable instanceof "SpecialSelectButtonLayer"))
+			{
+				//	最後の宝具ボタンで↓キーを押すとBackへ移動する
+				.backbutton.focus();
+				return;
+			}
+		}
+		super.onKeyDown(key, shift, true);
+	}
+}
+
+/*----------------------------------------------------------------------------/
+/	
+/----------------------------------------------------------------------------*/
+@endif

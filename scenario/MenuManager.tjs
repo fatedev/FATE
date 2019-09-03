@@ -1,0 +1,283 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) TYPE-MOON All Rights Reserved.
+/		メニュー管理クラス
+/----------------------------------------------------------------------------*/
+@if(__MENUMANAGER_DEFINED__==0)
+@set(__MENUMANAGER_DEFINED__=1)
+
+//	メニュー管理クラス
+class MenuManager
+{
+	var window, parent, plugin;
+	var name;
+
+	var lasttime = 600, lastaccel = 0;
+	var time, accel;
+
+	var layers	= [];
+	var _cur	= 0;
+
+	var formerlayer;
+
+	var startopacity, endopacity;
+	var starttick;
+	var doing;
+
+	var nextfunc;
+
+	var innermenus	= [];	//	内部に持つ外部で記述されたメニュー
+
+	var visible;
+
+	function MenuManager(win, par, plugin)
+	{
+		window	= win;
+		parent	= par;
+		this.plugin	= plugin;
+		visible	= false;
+	}
+
+	function finalize()
+	{
+		stop();
+
+		for(var i=0; i<innermenus.count; i++)
+			release(innermenus[i]);
+
+		release(layers[1]);
+		release(layers[0]);
+	}
+
+	function show(src=kag.fore.base, method="crossfade", time=lasttime, accel=lastaccel)
+	{
+		if(visible)	return;
+		visible	= true;
+
+		this.time	= time;
+		this.accel	= accel;
+
+//		src.beginTransition(%[method:method,children:true,time:time], curlayer);
+//		formerlayer	= src;
+//		curlayer.bringToFront();
+		changeOpacity(curlayer.opacity = 0, 255);
+//		curlayer.focus();
+
+		setSystemMode("system") if plugin!=void;	//	システムモードにする
+	}
+
+	function hide(method="crossfade", time=lasttime, accel=lastaccel, func=void)
+	{
+		if(!visible)	return;
+		visible	= false;
+
+		setSystemMode("scenario") if plugin!=void;	//	シナリオモードにする
+
+		this.time	= time;
+		this.accel	= accel;
+
+//		curlayer.beginTransition(%[method:method,children:true,time:time], formerlayer);
+		changeOpacity(, 0, func);
+	}
+
+	function change(method="crossfade", time=lasttime, accel=lastaccel, rule="")
+	{
+		this.time	= time;
+		this.accel	= accel;
+
+		curlayer.stopTransition();
+		nextlayer.stopTransition();
+
+		flip();
+		nextlayer.beginTransition(%[method:method,rule:rule,children:true,time:time], curlayer);
+	}
+
+	function changeOpacity(start=curlayer.opacity, end, func=void)
+	{
+		startopacity= start;
+		endopacity	= end;
+		System.addContinuousHandler(opacity_handler);
+		starttick	= System.getTickCount();
+		doing		= true;
+		curlayer.visible	= true;
+		nextfunc	= func;
+	}
+
+	function opacity_handler(tick)
+	{
+		var past = tick - starttick;
+		if(past < time)
+			curlayer.opacity	= startopacity + int((endopacity - startopacity) * (past/time));
+		else
+			finish();
+	}
+
+	function finish()
+	{
+		curlayer.opacity	= endopacity;
+		stop();
+	}
+
+	function stop()
+	{
+		if(doing)
+		{
+			System.removeContinuousHandler(opacity_handler);
+			doing	= false;
+			dm("name = "+name);
+			if(curlayer.opacity<1)
+			{
+				curlayer.visible	= false;
+				if(plugin!=void)
+					plugin.onMenuClosed();
+				else if(nextfunc!=void)
+				{
+					var func = nextfunc;
+					nextfunc	= void;
+					func(this);
+				}
+			}
+		}
+	}
+
+	function closeButtons(btns, btn, delayOfSelectedOne=0, delayOfUnselectedOne=0)
+	{
+//		dm("btns = "+btns+" / btn = "+btn+" / delayOfSelectedOne = "+delayOfSelectedOne+" / delayOfUnselectedOne = "+delayOfUnselectedOne);
+		if(delayOfSelectedOne != delayOfUnselectedOne)
+		{
+			for(var i=0; i<btns.count; i++)
+			{
+				//	選ばれたボタンとそうでないボタンは、消えるまでの時間が変わる
+				var tm = btns[i]==btn ? delayOfSelectedOne : delayOfUnselectedOne;
+//				dm("tm = "+tm);
+				btns[i].focusable	= false;		//	閉じる時はすべてのボタンを無効にする
+				btns[i].close(tm);
+//dm("btns[i] = "+btns[i]);				btns[i].close(btns[i]==btn ? delayOfSelectedOne : delayOfUnselectedOne);
+			}
+		}
+		else
+		{
+			for(var i=0; i<btns.count; i++)
+			{
+				btns[i].focusable	= false;		//	閉じる時はすべてのボタンを無効にする
+				btns[i].close(delayOfSelectedOne);
+			}
+		}
+		btns.clear();	//	閉じたボタンはリストから削除する
+	}
+
+	function eraseButtons(btns)
+	{
+		for(var i=0; i<btns.count; i++)
+			invalidate btns[i];
+	}
+
+	function flip()
+	{
+		_cur	= (_cur + 1) & 1;
+	}
+
+	function onTransitionCompleted(src, dest)
+	{
+		if(dest==formerlayer)
+		{
+			//	メニューが閉じられた
+			plugin.onMenuClosed() if plugin!=void;	//	メニューを破棄
+			return;
+		}
+//		curlayer.focus();
+	}
+
+	function onBeforeClose(menu)
+	{
+		//	開いた外部メニューが閉じられようとしている時に呼ばれる
+//		dm("close menu.name = "+menu.name);
+		for(var i=0; i<innermenus.count; i++)
+		{
+//			dm("check["+i+"] = "+innermenus[i].name);
+			if(innermenus[i] == menu)
+			{
+				innermenus.erase(i);	//	メニューを排除する
+				break;
+			}
+		}
+	}
+
+	function onClose(menu)
+	{
+		//	メニューが閉じられた時に呼ばれる
+		release(menu);	//	破棄する(自前で破棄してもOKか…)
+	}
+
+	property curlayer
+	{
+		getter
+		{
+			layers[_cur]	= new ManagedLayer(window, parent, this) if layers[_cur]==void;
+			return layers[_cur];
+		}
+	}
+
+	property nextlayer
+	{
+		getter
+		{
+			var next	= (_cur + 1) & 1;
+			layers[next]	= new ManagedLayer(window, parent, this) if layers[next]==void;
+			return layers[next];
+		}
+	}
+}
+
+class ManagedLayer extends KAGLayer
+{
+	var owner;
+	var layers	= [];
+
+	function ManagedLayer(win, par, owner)
+	{
+		name	= "ManagedLayer";
+		super.Layer(...);
+		this.owner	= owner;
+//		focusable	= true;
+	}
+
+	function loadImages()
+	{
+		super.loadImages(...);
+		for(var i=0; i<layers.count; i++)
+			release(layers[i]);
+		layers.clear();
+	}
+
+	function hide()			{ owner.hide(...) if typeof owner.hide != "undefined"; }
+	function closeChild()	{ owner.closeChild(...) if typeof owner.closeChild != "undefined"; }
+
+	function onMouseEnter()	{ owner.onMouseEnter(...) if typeof owner.onMouseEnter != "undefined"; }
+	function onMouseLeave()	{ owner.onMouseLeave(...) if typeof owner.onMouseLeave != "undefined"; }
+	function onMouseMove()	{ owner.onMouseMove(...) if typeof owner.onMouseMove != "undefined"; }
+	function onMouseDown()	{ owner.onMouseDown(...) if typeof owner.onMouseDown != "undefined"; }
+	function onMouseUp()	{ owner.onMouseUp(...) if typeof owner.onMouseUp != "undefined"; }
+
+	function onKeyDown()	{ owner.onKeyDown(...) if typeof owner.onKeyDown != "undefined"; }
+	function onKeyUp()		{ owner.onKeyUp(...) if typeof owner.onKeyUp != "undefined"; }
+	function onJoyStick()	{ owner.onJoyStick(...) if typeof owner.onJoyStick != "undefined"; }
+
+	function onButtonDown()	{ owner.onButtonDown(...) if typeof owner.onButtonDown != "undefined";}
+	function onBeforeClose(){ owner.onBeforeClose(...) if typeof owner.onClose != "undefined"; }
+	function onClose()		{ owner.onClose(...) if typeof owner.onClose != "undefined"; }
+
+//	function onButtonHided(){ owner.onButtonHided(...) if typeof owner.onButtonHided!="undefined";}
+
+	function onTransitionCompleted(dest, src)
+	{
+		super.onTransitionCompleted(...);
+		visible	= false if src==this;
+		if(typeof owner.onTransitionCompleted != "undefined")
+			owner.onTransitionCompleted(...);
+	}
+}
+
+/*----------------------------------------------------------------------------/
+/	
+/----------------------------------------------------------------------------*/
+@endif

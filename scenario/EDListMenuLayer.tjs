@@ -1,0 +1,331 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) TYPE-MOON All Rights Reserved.
+/		エンディング＆たいがーリストメニュー
+/----------------------------------------------------------------------------*/
+@if(__EDLISTMENULAYER_DEFINED__==0)
+@set(__EDLISTMENULAYER_DEFINED__=1)
+
+class EDListMenuLayer extends ExtendMenuLayer
+{
+	var	notCleared	= "el_タロット裏";
+	var	edlistData	= [
+		//	座標				画像名(4)				表になるフラグ(5)	現われるフラグ(6)
+		[  17, 69,  11, 321,	"el_セイバートゥルー",	"gセイバークリア",	"" ],
+		[ 173, 69, 167, 321,	"el_凛グッド",			"g凛グッド",		"gセイバークリア" ],
+		[ 329, 69, 323, 321,	"el_凛トゥルー",		"g凛トゥルー",		"gセイバークリア" ],
+		[ 485, 69, 479, 321,	"el_桜ノーマル",		"g桜ノーマル",		"g凛クリア" ],
+		[ 641, 69, 635, 321,	"el_桜トゥルー",		"g桜トゥルー",		"g凛クリア" ]
+	];
+	var	tspacing	= 14;	//	タロット間の隙間
+
+	var	pointName		= "gタイガー道場";
+	var	pointCount		= 41;
+	var	retCount		= 10;
+	var	gaugeBaseData	= [ 19, 430, "el_タイガーゲージ" ];
+	var	gaugePointName	= "el_タイガーぽいんと";
+	var	gaugePointPos	= [
+		[  30, 431 ],
+		[  30, 472 ],
+		[  30, 513 ],
+		[  30, 554 ]
+	];
+	var	gaugePointMove	= 46;
+	var	tigerPos	= [ 497, 432, "el_タイガー", "段階" ];
+	var	specialData	= [ "special", 652, 372, "el_すぺしゃるボタン", "修了検定" ];
+	var	phaseLevel	= 10;		//	phaseLevel分ポイントがたまるごとに段階アップ
+	var	pointMax	= 40;		//	全てをチェックした時のポイント
+	var	miniData	= [ "mini", 664, 497, 38, "el_肉ボタン", "ミニ劇場その" ];
+	var	plusalpha	= "";
+
+	var	edlists;	//	ED画像
+	var	edtitles;	//	EDタイトル
+	var	points;		//	タイガーポイント
+	var	gauge;		//	タイガーゲージ
+	var	tiger;		//	タイガー
+	var	special;	//	すぺしゃる
+	var	mini;		//	ミニ劇場
+
+	var title, tigertitle;
+	var back;
+
+	var	showed;
+
+	function EDListMenuLayer(win, par)
+	{
+		super.ExtendMenuLayer(...);
+		name	= "EDListレイヤー";
+
+		loadImages("normal_extra");
+		setSizeToImageSize();
+		setPos(0, 0);
+
+		//	EDList
+		edlists	= [];
+		edtitles= [];
+		var	eds	= edlistData;
+		var	edcnt	= 0;
+		for(var i=0; i<eds.count; i++)
+		{
+			var ed	= eds[i];
+			if(ed[6]=="" || sf[ed[6]])
+			{
+				//	タロット
+				with(edlists[edcnt] = new global.Layer(win, this))
+				{
+					.loadImages(sf[ed[5]] ? ed[4]+"画像" : notCleared);
+					.name	= ed[4]+"画像";
+					.setSizeToImageSize();
+//					.setPos(ed[0], ed[1]);
+					.top	= ed[1];
+					.hitType	= htMask;
+					.hitThreshold	= 256;
+					.visible	= true;
+				}
+
+				//	タイトル
+				if(sf[ed[5]])
+				{
+					with(edtitles[edcnt] = new global.Layer(win, this))
+					{
+						.loadImages(ed[4]);
+						.name	= ed[4];
+						.setSizeToImageSize();
+//						.setPos(ed[2], ed[3]);
+						.top	= ed[3];
+						.hitType	= htMask;
+						.hitThreshold	= 256;
+						.visible	= true;
+					}
+				}
+				else
+					edtitles[edcnt]	= void;
+				edcnt++;
+			}
+		}
+		//	位置調整
+		if(edcnt>0)
+		{
+			var	step= (edlists[0].width + tspacing);
+			var	w	= step * edcnt - tspacing;
+			var	l	= (win.scWidth - w) \ 2;
+			for(var i=0; i<edcnt; i++)
+			{
+				with(edlists[i])
+				{
+					.left	= l;
+					if(edtitles[i]!==void)
+						edtitles[i].left	= (.width - edtitles[i].width) \ 2 + l;
+				}
+				l	+= step;
+			}
+		}
+
+		//	タイガーゲージ
+		with(gauge = new global.Layer(win, this))
+		{
+			var gd = gaugeBaseData;
+			.loadImages(gd[2]);
+			.name	= gd[2];
+			.setSizeToImageSize();
+			.setPos(gd[0], gd[1]);
+			.hitType	= htMask;
+			.hitThreshold	= 256;
+			.visible	= true;
+		}
+
+		//	タイガーポイント
+		points	= [];
+		var	point	= 0;
+		var tmplayer = new global.Layer(win, this);
+		with(tmplayer)
+		{
+			.name	= "タイガーポイントシール";
+			.loadImages(gaugePointName);
+			.setSizeToImageSize();
+		}
+		for(var i=0; i<pointCount; i++)
+		{
+//			dm(pointName+(i+1)+" = "+sf[pointName+(i+1)]);
+			var	gp	= gaugePointPos;
+			var	gm	= gaugePointMove;
+			if(sf[pointName+(i+1)])
+			{
+				var	row	= i \ retCount;
+				var	col	= i % retCount;
+				with(tmplayer)
+				{
+					gauge.pileRect(gp[row][0]+col*gm-gauge.left, gp[row][1]-gauge.top,
+						tmplayer, 0, 0, .width, .height);
+				}
+/*				var	l	= new global.Layer(win, this);
+				with(points[point] = l)
+				{
+					.loadImages(gaugePointName);
+					.name	= "ポイント"+(i+1);
+					.setSizeToImageSize();
+					.setPos(gp[row][0] + col * gm, gp[row][1]);
+//					dm((i+1)+": "+row+", "+col+" => "+.left+", "+.top);
+					.hitType	= htMask;
+					.hitThreshold	= 256;
+					.visible	= true;
+				}
+*/				point++;
+			}
+		}
+		invalidate tmplayer;
+
+		//	タイガー
+		var phase	= point \ phaseLevel;
+		with(tiger = new global.Layer(win, this))
+		{
+			var tp = tigerPos;
+			.loadImages(tp[2]+phase+tp[3]);
+			.name	= tp[2]+phase+tp[3];
+			.setSizeToImageSize();
+			.setPos(tp[0], tp[1]);
+			.hitType	= htMask;
+			.hitThreshold	= 256;
+			.visible	= true;
+		}
+
+		//	ミニ劇場
+		mini	= [];
+		var md	= miniData;
+		for(var i=0; i<phase && i<3; i++)
+		{
+			var no = i+1;
+			with(mini[i] = new global.ExButtonLayer(win, this, md[0]+no, md[1]+i*md[3], md[2],
+				md[4], md[5]+no+plusalpha))
+			{
+				.mode	= 3;	//	押される4枚ボタン
+				.show(0);
+			}
+		}
+
+		//	すぺしゃるボタン
+		var allclear	= true;
+		for(var i=0; i<eds.count; i++)
+			allclear &= sf[eds[i][5]];
+		if(point == pointMax && allclear)
+		{
+			var sd = specialData;
+			with(special = new global.ExButtonLayer(win, this, sd[0], sd[1], sd[2], sd[3], sd[4]))
+			{
+				.mode	= 3;	//	押される4枚ボタン
+/*				.baseleft	= sd[1];
+				.basetop	= sd[2];
+				.amplitude	= 10;
+				.finalize	= function()
+				{
+					release(timer);
+					global.ExButtonLayer.finalize(...);
+				} incontextof special;
+				.onTimer	= function()
+				{
+					//	ランダム移動
+					left	= baseleft + int(amplitude * (Math.random()-0.5));
+					top		= basetop + int(amplitude * (Math.random()-0.5));
+				} incontextof special;
+				with(.timer = new Timer(.onTimer, ""))
+				{
+					.interval	= 72;
+					.enabled	= true;
+				}
+*/				.show(0);
+			}
+		}
+
+		//	タイトルとバックボタン
+		title	= new global.MenuTitleLayer(win, this, "edlist_title", 27, 20, 1, 9);
+		title.noclear	= true;
+		tigertitle	= new global.MenuTitleLayer(win, this, "tiger_title", 27, 387, 1, 376);
+		tigertitle.noclear	= true;
+		back	= new global.MenuBackButtonLayer(win, this);
+		back.noclear	= true;
+	}
+
+	function finalize()
+	{
+		for(var i=0; i<edlists.count; i++)	release(edlists[i]);
+		for(var i=0; i<edtitles.count; i++)	release(edtitles[i]);
+		for(var i=0; i<points.count; i++)	release(points[i]);
+		release(gauge);
+		release(tiger);
+		release(special);
+		for(var i=0; i<mini.count; i++)	release(mini[i]);
+		super.finalize(...);
+	}
+
+	function show()
+	{
+		if(!showed)
+		{
+			showed	= true;
+			super.show(...);
+
+			title.resetPos();
+			title.open();
+			tigertitle.resetPos();
+			tigertitle.open();
+			back.resetPos();
+			back.open();
+			back.focus();
+
+			moveCursor(this, back.left+back.width\2, back.top+back.height\2);
+		}
+	}
+
+	function hide()
+	{
+		if(showed)
+		{
+			showed	= false;
+			title.close();
+			tigertitle.close();
+			back.close();
+
+			super.hide(...);
+		}
+	}
+
+	function closeThis()
+	{
+		parent.closeChild(this);
+	}
+
+	function onMouseDown(x, y, button, shift)
+	{
+		if(button == mbRight)
+			closeThis();
+	}
+
+	function onButtonDown(btn)
+	{
+		if(!showed)	return;
+		switch(btn.id)
+		{
+		case "back":
+			closeThis();
+			break;
+		case "special":
+			with(parent.owner.curlayer)	//	メニュー画像を背景へコピー
+				window.fore.base.piledCopy(0, 0, parent.owner.curlayer, 0, 0, .width, .height);
+			f.scripttitle	= "タイガー道場すぺしゃる";
+			parent.owner.goLabel("タイガー道場すぺしゃる.ks", "*page0");
+			break;
+		case "mini1":
+		case "mini2":
+		case "mini3":
+			with(window.fore.base)
+				.fillRect(0, 0, .width, .height, 0xFF000000);
+			f.scripttitle	= miniData[5]+btn.id[4];
+			parent.owner.goLabel(f.scripttitle+".ks", "*page0");
+			break;
+		}
+	}
+}
+
+/*----------------------------------------------------------------------------/
+/	
+/----------------------------------------------------------------------------*/
+@endif

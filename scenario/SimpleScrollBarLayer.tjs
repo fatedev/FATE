@@ -1,0 +1,36 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) TYPE-MOON All Rights Reserved.
+/		タブのみ表示するスクロールバー
+/----------------------------------------------------------------------------*/
+@if(__SIMPLESCROLLBARLAYER_DEFINED__==0)
+@set(__SIMPLESCROLLBARLAYER_DEFINED__=1)
+
+Scripts.execStorage("ScrollBarLayer.tjs");
+
+class SimpleScrollBarLayer extends ScrollBarLayer
+{
+	function SimpleScrollBarLayer(win, par, w, h)
+	{
+		imgs	= [
+			"",
+			"",
+			"",
+			"music_tab_t",
+			"music_tab_c",
+			"music_tab_b"
+		];
+		setSize(w, h);
+		super.ScrollBarLayer(win, par, h, 0, 0);
+		fillRect(0, 0, w, h, 0x00000000);	//	透明
+	}
+
+	function draw()
+	{
+		//	透明なので何も描画しない
+	}
+}
+
+/*----------------------------------------------------------------------------/
+/	
+/----------------------------------------------------------------------------*/
+@endif

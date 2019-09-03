@@ -1,0 +1,306 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) TYPE-MOON All Rights Reserved.
+/		ページナビゲーションレイヤー
+/----------------------------------------------------------------------------*/
+@if(__PAGENAVILAYER_DEFINED__==0)
+@set(__PAGENAVILAYER_DEFINED__=1)
+
+class PageNaviLayer
+{
+	var window, parent;
+	var target;
+	var _left, _top;
+
+	var _pageno, lastpageno;
+	var _maxpages;
+
+	var numberlayer;	//	数字を保持するレイヤー
+	var numberfile	= "wp_numfont";
+	var number_count= 3;	//	数字ファイルにいくつまで登録されているか("/"を含まない数)
+
+	var indexlayer;		//	ページ数を表示するレイヤー
+
+	var buttons;		//	前後ボタンレイヤー
+	var buttondatas	= [
+		[ 3, "prev",	"wp_left",	"前のページへ",	0, 0 ],
+		[ 3, "next",	"wp_right",	"次のページへ", 0, 0 ]
+	];
+
+	var center		= 77;
+	var leftpos		= 0;
+	var rightpos	= 124;
+	var fontwidth;
+	var fontheight;
+
+	var initialized;
+
+	var defaulttime	= 300;
+	var defaultaccel= 0;
+
+	var visible	= false;
+
+	function PageNaviLayer(win, par, target=void, numfont, numcount, leftarrow, rightarrow)
+	{
+		window		= win;
+		parent		= par;
+		this.target	= target!=void ? target : par;
+		this._left	= 0;
+		this._top	= 0;
+		initialized	= false;
+		numberfile			= numfont if numfont!==void;
+		number_count		= numcount if numcount!==void;
+		buttondatas[0][2]	= leftarrow if leftarrow!==void;
+		buttondatas[1][2]	= rightarrow if rightarrow!==void;
+	}
+
+	function init(l=void, t=void, maxp=1)
+	{
+		if(initialized)
+			return;
+
+		_left		= l!==void ? l : 0;
+		_top		= t!==void ? t : 0;
+
+		var win = window, par = parent;
+
+		with(numberlayer = new global.Layer(win, par))
+		{
+			.loadImages(numberfile);
+			.name	= "数字リソース: "+numberfile;
+			fontwidth	= .imageWidth \ (number_count + 1);
+			fontheight	= .imageHeight;
+		}
+
+		with(indexlayer = new global.FadeLayer(win, par))
+		{
+			.setSize(fontwidth * 3, fontheight);
+			.setPos(center - .width \ 2 + left, top);
+			.copyRect(fontwidth, 0, numberlayer, number_count*fontwidth, 0, fontwidth, fontheight);
+			.name	= "ページ表示";
+			.visible= false;
+			.opacity= 255;
+			.onMouseDown = function()
+			{
+				parent.onMouseDown(...);
+			} incontextof indexlayer;
+		}
+
+		with(buttons = createButtons(win, par, buttondatas))
+		{
+			.visible	= .bros.visible	= false;
+			.opacity	= .bros.opacity	= 255;
+			.setPos(leftpos + left, top);
+			.bros.setPos(rightpos + left, top);
+			buttons["target"]	= .bros["target"]	= this;
+			var onmouseup	= function(x, y, button, shift)
+			{
+				if(button==mbLeft && state == 2 && focusable)
+				{
+					state	= nextstate;
+					if(state==4 || _type==0)
+					{
+						//	オンになったときはDOWNメッセージ
+						//	オフになったときでも、オンしか感知しないボタンならDOWNメッセージ
+						target.onButtonDown(this);
+						if(_type==2)
+							off(this);	//	ラジオボタンなので、自身以外をOFFにする
+					}
+/*					else
+					{
+						//	オフになったときはUPメッセージ
+						target.onButtonUp(this);
+					}
+*/					return true;
+				}
+				return false;
+			};
+			var onmousedown	= function(x, y, button, shift)
+			{
+				dm("on mouse down to arrow layer.");
+				if(button==mbLeft)
+					global.ExButtonLayer.onMouseDown(...);
+				else if(button==mbRight)
+					parent.onMouseDown(...);
+			};
+			var onmousewheel = function()
+			{
+				parent.onMouseWheel(...);
+			};
+			buttons["lastfade"] = .bros["lastfade"]	= 255;
+			.onMouseUp		= onmouseup incontextof buttons;
+			.bros.onMouseUp	= onmouseup incontextof .bros;
+			.onMouseDown	= onmousedown incontextof buttons;
+			.bros.onMouseDown	= onmousedown incontextof .bros;
+			.onMouseWheel	= onmousewheel incontextof buttons;
+			.bros.onMouseWheel	= onmousewheel incontextof .bros;
+		}
+
+		initialized	= true;
+		visible		= false;
+		maxpages	= maxp;
+	}
+
+	function finalize()
+	{
+//		dm("page navi layer: finalize.("+buttons+"/"+indexlayer+"/"+numberlayer+")");
+		release(buttons);
+		release(indexlayer);
+		release(numberlayer);
+	}
+
+	//	最初
+	function open()
+	{
+		if(!initialized || visible) return;
+
+		var time = defaulttime, accel = defaultaccel;
+		indexlayer.show(time, accel);
+		buttons.show(time, accel);
+		visible	= true;
+	}
+
+	//	最後
+	function close()
+	{
+		if(!initialized) return;
+
+		if(visible)
+		{
+			var time = defaulttime, accel = defaultaccel;
+			buttons.hide(time, accel);
+			indexlayer.hide(time+10, accel, onInnerClosed);
+			visible	= false;
+		}
+		else
+			onInnerClosed();	//	表示されていない時は閉じるのみ
+	}
+
+	//	途中で表示
+	function show(maxp)
+	{
+		maxpages= maxp;
+		pageno	= 0;
+		open();
+	}
+
+	//	途中で消去
+	function hide()
+	{
+		if(!initialized || !visible) return;
+
+		var time = defaulttime, accel = defaultaccel;
+		indexlayer.hide(time, accel);
+		buttons.hide(time, accel);
+		visible	= false;
+	}
+
+	function drawCurrentPageNo()
+	{
+		dm("draw current page.");
+		indexlayer.copyRect(0, 0, numberlayer, pageno*fontwidth, 0, fontwidth, fontheight);
+	}
+
+	function drawMaxPages()
+	{
+		dm("draw max pages.");
+		indexlayer.copyRect(fontwidth*2, 0, numberlayer,
+			(maxpages - 1) * fontwidth, 0, fontwidth, fontheight);
+	}
+
+	function onInnerClosed()
+	{
+//		dm("page navi layer: closed.");
+		invalidate this;
+	}
+
+	function onButtonDown(btn)
+	{
+		switch(btn.id)
+		{
+		case "prev":	prev();	break;
+		case "next":	next();	break;
+		}
+	}
+
+	function prev()
+	{
+		pageno-- if visible;
+	}
+
+	function next()
+	{
+		pageno++ if visible;
+	}
+
+	property pageno
+	{
+		setter(p)
+		{
+			if(p>=0 && p<maxpages)
+			{
+				lastpageno = _pageno;
+				_pageno	= p;
+				drawCurrentPageNo();
+				var prev = buttons.get("prev"), next = buttons.get("next");
+				prev.enabled	= p>0;
+				next.enabled	= p<maxpages-1;
+				next.focus() if p<1;
+				prev.focus() if p>=maxpages-1;
+				if(typeof target.onPageChanged != "undefined")
+					target.onPageChanged(this, p, lastpageno);	//	ページの変更を伝える
+			}
+		}
+		getter	{ return _pageno; }
+	}
+
+	property maxpages
+	{
+		setter(m)
+		{
+			if(m!==_maxpages && m>0 && m<=number_count)
+			{
+				_maxpages	= m;
+				drawMaxPages();
+				pageno	= 0;
+			}
+		}
+		getter	{ return _maxpages; }
+	}
+
+	property left
+	{
+		setter(l)
+		{
+			if(l!==_left)
+			{
+				_left	= l;
+				if(initialized)
+				{
+					indexlayer.left		= l - indexlayer.width \ 2;
+					buttons.left		= l + leftpos;
+					buttons.bros.left	= l + rightpos;
+				}
+			}
+		}
+		getter	{ return _left; }
+	}
+
+	property top
+	{
+		setter(t)
+		{
+			if(t!==_top)
+			{
+				_top	= t;
+				if(initialized)
+					indexlayer.top = buttons.top = buttons.bros.top = t;
+			}
+		}
+		getter	{ return _top; }
+	}
+}
+
+/*----------------------------------------------------------------------------/
+/	
+/----------------------------------------------------------------------------*/
+@endif

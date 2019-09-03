@@ -1,0 +1,100 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) 1999-2002 TYPE-MOON All Rights Reserved.
+/		テキストタイプのボタン
+/----------------------------------------------------------------------------*/
+@if(__TEXTBUTTONLAYER_DEFINED__==0)
+@set(__TEXTBUTTONLAYER_DEFINED__=1)
+
+Scripts.execStorage("ExButtonLayer.tjs");
+
+class TextButtonLayer extends ExButtonLayer
+{
+	var buttonwidth;
+	var spacing	= 1;
+	var bgcolor		= 0x00000000;
+	var textcolor	= 0x000000;
+	var shadowcolor;	//	voidなら影無し
+
+	function TextButtonLayer(win, par, id="", l=0, t=0, hint="", w=void, h=16, bgcolor=void, textcolor=void, shadowcolor=void, eldest=true)
+	{
+		super.ExButtonLayer(win, par, id, l, t, "", hint, eldest);
+
+		hitType		= htMask;
+		hitThreshold= 0;	//	すべて拾う
+
+		if(w==void)
+			font.height	= h;
+		else
+		{
+			buttonwidth	= w;
+			font.height	= h - spacing*2;
+		}
+		this.bgcolor	= bgcolor if bgcolor!==void;
+		this.textcolor	= textcolor if textcolor!==void;
+		this.shadowcolor= shadowcolor;
+
+		width	= font.getTextWidth(id) + spacing * 2;
+		height	= font.getTextHeight(id) + spacing * 2;
+	}
+
+	function finalize()
+	{
+		super.finalize(...);
+	}
+
+	function create(id="", l=0, t=0, hint="", w=void, h=16, bgcolor=void, textcolor=void, shadowcolor=void)
+	{
+		return new global.TextButtonLayer(window, parent, id, l, t, hint, w, h, bgcolor, textcolor, shadowcolor, false);
+	}
+
+	function draw()
+	{
+		var sp = spacing;
+
+		var opa = 0xFF000000;
+		if(!enabled)
+			opa	= 0x80000000;
+
+		//	全消去
+		fillRect(0, 0, width, height, bgcolor);
+		//	文字描画
+		if(shadowcolor!==void)
+			drawText(sp, sp, id, textcolor, opa>>24, true, 1024, shadowcolor, 2, 0, 0);
+		else
+			drawText(sp, sp, id, textcolor, opa>>24, true);
+
+		switch(state)
+		{
+		case 1:	//	マウスオン
+			drawFrame(0xFFFFFF|opa, 0x000000|opa);
+			break;
+
+		case 2:	//	マウスダウン
+			drawFrame(0x000000|opa, 0xFFFFFF|opa);
+			break;
+
+		case 3:	//	オン
+			colorRect(sp, sp, width-sp*2, height-sp*2, 0xFFFFFF, 96);
+			break;
+
+		case 4:	//	オン＋マウスオン
+			colorRect(sp, sp, width-sp*2, height-sp*2, 0xFFFFFF, 96);
+			drawFrame(0x000000|opa, 0xFFFFFF|opa);
+			break;
+		}
+	}
+
+	function drawFrame(ltcolor, rbcolor)
+	{
+		var sp = spacing;
+		fillRect(0, 0, width, sp, ltcolor);
+		fillRect(0, sp, sp, height-sp, ltcolor);
+		fillRect(sp, height-sp, width-sp, sp, rbcolor);
+		fillRect(width-sp, sp, sp, height-sp, rbcolor);
+	}
+}
+
+/*-----------------------------------------------------------------------------
+/	End of File
+/----------------------------------------------------------------------------*/
+@endif

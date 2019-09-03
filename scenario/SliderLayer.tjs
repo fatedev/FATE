@@ -1,0 +1,163 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) TYPE-MOON All Rights Reserved.
+/		スライダー(値を設定する時滑らせるようにして選ばせる)
+/----------------------------------------------------------------------------*/
+@if(__SLIDERLAYER_DEFINED__==0)
+@set(__SLIDERLAYER_DEFINED__=1)
+
+Scripts.execStorage("ExButtonlayer.tjs");
+
+//	スライダー
+class SliderLayer extends ExButtonLayer
+{
+	var basex;
+	var basey;
+	var area;
+
+	var lastx;
+	var _pos;	//	実際の位置
+
+	var max;	//	スライダーが一番右にあるときの値
+	var unit;	//	1pixelがいくらの値になるかの変換値(単位)
+
+	var accel;
+	var trigchktimer;
+
+	function SliderLayer(win, par, id, basex, basey, img, hint, width, max)
+	{
+		super.ExButtonLayer(win, par, id, basex, basey, img, hint);
+		mode	= 0;	//	押されるだけボタン
+
+		this.basex	= basex;
+		this.basey	= basey;
+		area		= width - this.width;	//	移動可能範囲
+		this.max	= max;
+		unit		= max / area;
+
+		if(typeof System.getJoyStickState != "undefined")
+		{
+			with(trigchktimer = new global.Timer(onTrigCheckTimer, ""))
+			{
+				.interval	= 50;
+				.enabled	= true;
+			}
+		}
+	}
+
+	function finalize()
+	{
+		release(trigchktimer);
+		super.finalize(...);
+	}
+
+	function onMouseDown(x, y, button, shift)
+	{
+		if(super.onMouseDown(...))
+		{
+			lastx	= x;
+			parent.curitem	= this;
+		}
+	}
+
+	function onMouseUp()
+	{
+		if(super.onMouseUp(...))
+			parent.curitem	= void;
+	}
+
+	function onMouseMove(x, y, shift)
+	{
+		if(state==2)
+		{
+			//	押されているとき
+			var mv = x - lastx;
+			pos		+= mv;
+			lastx	= x - mv;
+		}
+	}
+
+	function onKeyDown(key, shift)
+	{
+		switch(key)
+		{
+		case VK_LEFT:
+//		case VK_DOWN:
+			if(shift & ssRepeat)
+				accel++;
+			else
+				accel	= 1;
+			value	-= accel;
+			return;
+
+		case VK_RIGHT:
+//		case VK_UP:
+			if(shift & ssRepeat)
+				accel++;
+			else
+				accel	= 1;
+			value	+= accel;
+			return;
+		}
+		super.onKeyDown(key, shift, true);
+	}
+
+	function onJoyStick(trig)
+	{
+		if(trig & jsLeft)
+		{
+			accel++;
+			value	-= accel;
+		}
+		else if(trig & jsRight)
+		{
+			accel++;
+			value	+= accel;
+		}
+		else
+		{
+			super.onJoyStick(trig, true);
+		}
+	}
+
+	function onTrigCheckTimer()
+	{
+		//	50ms(joystickのチェック間隔)毎にトリガーがOFFになってないかチェック
+		if(!(System.getJoyStickState() & (jsLeft | jsRight)))
+			accel	= 0;	//	OFFになっていたら、アクセルを0にする
+	}
+
+	property pos
+	{
+		setter(p)
+		{
+			if(p<0)
+				p	= 0;
+			else if(p>area)
+				p	= area;
+			left = basex + p;
+			_pos = p;
+			parent.onChangeValue(this, value);
+		}
+		getter	{ return _pos; }
+	}
+
+	property value
+	{
+		setter(v)
+		{
+			if(v<0)
+				v	= 0;
+			else if(v>max)
+				v	= max;
+			_pos	= v / unit;
+			left = basex + _pos;
+			parent.onChangeValue(this, value);
+		}
+		getter	{ return pos * unit; }
+	}
+}
+
+/*----------------------------------------------------------------------------/
+/	
+/----------------------------------------------------------------------------*/
+@endif

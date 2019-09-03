@@ -1,0 +1,93 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) TYPE-MOON All Rights Reserved.
+/		ステータスメニューで使用するボタンレイヤー
+/----------------------------------------------------------------------------*/
+@if(__STATUSBUTTONLAYER_DEFINED__==0)
+@set(__STATUSBUTTONLAYER_DEFINED__=1)
+
+Scripts.execStorage("ExButtonLayer.tjs");
+
+class StatusButtonLayer extends ExButtonLayer
+{
+	var onleft = 0, offleft = -8;
+	var showopacity = 255, hideopacity = 0;
+	var defaulttime = 300, defaultaccel = 2;
+
+	var opened	= false;
+
+	function StatusButtonLayer(win, par, id, l, t, img, hint, eldest, startleft=void)
+	{
+		super.ExButtonLayer(...);
+		opacity	= hideopacity;
+		visible	= true;
+		mode	= 2;	//	ラジオボタン
+		hitThreshold	= 0;
+		left	= startleft===void ? -width \ 2 : startleft;
+	}
+
+	function finalize()
+	{
+		super.finalize(...);
+	}
+
+	function create(id, l, t, img, hint, startleft=void)
+	{
+		return new global.StatusButtonLayer(window, parent, id, l, t, img, hint, false, startleft);
+	}
+
+	function open(delay=0, selected=false)
+	{
+		if(!opened)
+		{
+			opened	= true;
+//			move(selected?onleft:offleft, top, showopacity, defaulttime, defaultaccel,
+			move(onleft, top, showopacity, defaulttime, defaultaccel,
+				onInnerOpened, delay);
+			focusable	= true;
+		}
+	}
+
+	function close(delay)
+	{
+		if(opened)
+		{
+			focusable	= false;
+			move(-width\2, top, hideopacity, defaulttime, -defaultaccel,
+				onInnerClosed, delay);
+			opened	= false;
+		}
+	}
+
+	function onKeyDown(key, shift)
+	{
+		dm("key: "+key);
+		if(key==VK_LEFT)
+		{
+			target.pagenavi.prev() if target.pagenavi!=void;
+			focus();	//	フォーカスを取り返す
+			return;
+		}
+		else if(key==VK_RIGHT)
+		{
+			target.pagenavi.next() if target.pagenavi!=void;
+			focus();	//	フォーカスを取り返す
+			return;
+		}
+		super.onKeyDown(key, shift, true);
+	}
+
+	function onInnerOpened()
+	{
+//		opened	= true;
+	}
+
+	function onInnerClosed()
+	{
+		invalidate this;
+	}
+}
+
+/*----------------------------------------------------------------------------/
+/	
+/----------------------------------------------------------------------------*/
+@endif

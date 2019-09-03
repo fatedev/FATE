@@ -1,0 +1,232 @@
+/*----------------------------------------------------------------------------/
+/	Copyright (C) 1999-2002 TYPE-MOON All Rights Reserved.
+/		ゲームメインメニュー用のボタン
+/----------------------------------------------------------------------------*/
+@if(__GAMEMENUBUTTONLAYER_DEFINED__==0)
+@set(__GAMEMENUBUTTONLAYER_DEFINED__=1)
+
+Scripts.execStorage("ExButtonLayer.tjs");
+Scripts.execStorage("subroutine.tjs");
+class GameMenuButtonLayer extends ExButtonLayer
+{
+	var delayVisible;
+	var delayTimer;
+	var delayFunc;
+	var delayArg1;
+	var delayArg2;
+	var delayArg3;
+	var lastfocus;
+
+	var basetop;
+	var start_opacity, end_opacity;
+	var start_height, end_height;
+
+	var starttick;
+	var doing;
+	var lasttick;
+
+	function GameMenuButtonLayer()
+	{
+		super.ExButtonLayer(...);
+		lastfocus	= false;
+		basetop	= top;
+		for(var i=0; i<septByMode.count; i++)
+			septByMode[i]	= 6;
+	}
+
+	function finalize()
+	{
+		stop();
+		super.finalize(...);
+	}
+
+	function create(id, l, t, img, hint)
+	{
+		return new global.GameMenuButtonLayer(window, parent, id, l, t, img, hint, false);
+	}
+
+	function show(time, accel, delay=0, all=true)
+	{
+		//	表示初期化
+		setImagePos(0, 0);
+		opacity	= 0;
+
+		//	表示開始
+//		fadeAndSlide(255, -height, time, accel);
+		top		= basetop + imageHeight - 1;
+		fadeAndSlide(255, imageHeight, time, accel, imageHeight>>1);
+		focusable	= true;
+
+		//	すべて表示なら、弟にも指令する
+		if(bros!=void && all)
+		{
+			stopDelay();	//	現在予定されているズレ実行を停止
+			if(delay>0)
+				execDelay(delay, bros.show, time, accel, delay);
+			else
+				bros.show(time, accel);
+		}
+	}
+
+	function hide(time, accel, delay=0, all=true)
+	{
+		//	消去
+		focusable	= false;
+		fadeAndSlide(0, 0, time, accel);
+
+		//	すべて消去なら、弟にも指令する
+		if(bros!=void && all)
+		{
+			stopDelay();	//	現在予定されているズレ実行を停止
+			if(delay>0)
+				execDelay(delay, bros.hide, time, accel, delay);
+			else
+				bros.hide(time, accel);
+		}
+	}
+
+	function execDelay(delay, func, arg1, arg2, arg3)
+	{
+		delayFunc	= func;
+		delayArg1	= arg1;
+		delayArg2	= arg2;
+		delayArg3	= arg3;
+
+		delayTimer			= new Timer(execDelayFunc, '');
+		delayTimer.interval	= delay;
+		delayTimer.enabled	= true;
+	}
+
+	function stopDelay()
+	{
+		delayTimer.enabled	= false if delayTimer!=void;
+	}
+
+	function execDelayFunc()
+	{
+		stopDelay();
+		delayFunc(delayArg1, delayArg2, delayArg3);
+	}
+
+	function recordFocus(all=false)
+	{
+		if(all)
+		{
+			var cur = this;
+			while(cur!=void)
+			{
+				cur.recordFocus();
+				cur = cur.bros;
+			}
+		}
+		else
+			lastfocus	= focused;
+	}
+
+	function restoreFocus(all=false)
+	{
+		if(all)
+		{
+			var cur = this;
+			while(cur!=void)
+			{
+				cur.restoreFocus();
+				cur = cur.bros;
+			}
+		}
+		else if(lastfocus)
+			focus();
+	}
+
+	function fadeAndSlide(o, h, time, accel, sh=void)
+	{
+/*		if(time>0)
+		{
+			visible		= true;
+			var array = [];
+			array[0]	= 0;
+			array[1]	= imageTop;
+			array[2]	= opacity;
+			array[3]	= 0;
+			array[4]	= h;
+			array[5]	= o;
+			moveObject = new LinearMoverImgPosY(this, array, time,
+				accel === void ? 0 : +accel, fadeFinish);
+			moveObject.startMove();
+		}
+		else
+		{
+			opacity	= o;
+			imageTop	= h;
+			fadeFinish();
+		}
+*/
+		this.end_opacity= o;
+		this.end_height	= h;
+		start_opacity	= opacity;
+		start_height	= sh===void ? height : sh;
+		this.time		= time;
+		this.accel		= accel;
+
+		visible	= true;
+		if(time<1)
+			finish();
+		else
+		{
+			starttick	= System.getTickCount();
+			System.addContinuousHandler(handler);
+			doing	= true;
+		}
+	}
+
+	function handler(tick)
+	{
+		if(tick<=lasttick)	return;
+		lasttick	= tick;
+		var past = tick - starttick;
+		if(past>time)
+			finish();
+		else
+			construct(calcAccel(past/time, accel));
+	}
+
+	function construct(per)
+	{
+//		dm(@"${name}: per = ${per} / end_height = ${end_height} / start_height = ${start_height}");
+		var h	= start_height + int((end_height - start_height) * per);
+		if(height != h)
+		{
+			height	= h;
+			opacity	= start_opacity + int((end_opacity - start_opacity) * per);
+			top		= basetop + imageHeight - height;
+			imageLeft	= -width * state;
+//			dm(@"${name}: height = ${height} / top = ${top} / imageLeft = ${imageLeft} / opacity = ${opacity}");
+		}
+	}
+
+	function finish()
+	{
+		//	最終状態にする
+		height		= end_height;
+		opacity		= end_opacity;
+		top			= basetop;
+		imageLeft	= -width * state;
+
+		stop();	//	継続的処理を停止
+	}
+
+	function stop()
+	{
+		if(doing)
+		{
+			System.removeContinuousHandler(handler);
+			doing	= false;
+			visible	= false if opacity<1;
+		}
+	}
+}
+
+/*----------------------------------------------------------------------------/
+/
+/----------------------------------------------------------------------------*/
+@endif

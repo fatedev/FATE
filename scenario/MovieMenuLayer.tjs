@@ -1,0 +1,528 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) TYPE-MOON All Rights Reserved.
+/		ムービーメニューレイヤー
+/----------------------------------------------------------------------------*/
+@if(__MOVIEMENULAYER_DEFINED__==0)
+@set(__MOVIEMENULAYER_DEFINED__=1)
+
+Scripts.execStorage("ExtendMenuLayer.tjs");
+Scripts.execStorage("MenuTitleLayer.tjs");
+Scripts.execStorage("MenuBackButtonLayer.tjs");
+
+class MovieMenuLayer extends ExtendMenuLayer
+{
+	var title;
+
+	var movietitles;
+	var movietitledata	= [
+		[ 4, 0, "op01title_mini",	"", 666,  55, "op01.mpg",	"op01title" ],
+		[ 4, 1, "op02title_mini",	"", 666, 160, "op02.mpg",	"op02title" ]/*,
+		[ 4, 2, "op02title_mini",	"", 666, 265, "op02.mpg",	"op02title" ],
+		[ 4, 3, "sfronttitle_mini",	"", 666, 370, "sfront.mpg",	"sfronttitle" ]
+*/	];
+
+	var buttons;
+	var buttondata	= [
+		[ 1, "fullscreen",	"mov_fullscreen",	"ムービー再生の、ウィンドウ/フルスクリーン表示を切替えます。\n※再生中には、切り替えは反映されません。",	671, 490 ],
+		[ 1, "play",		"mov_play",			"選択されているムービーを再生/停止します。",	537, 553 ]
+	];
+
+	var back;
+
+	var largetitle;
+	var magnifier;
+	var magnifier_mover;
+
+	var _curmovie;
+	var leave;		//	ボタンからはなれたか
+	var playingMovie;
+	var curstatus;
+
+	var video;
+	var playing;
+	var fullscreen;
+
+	var videorect	= %[ left:13, top:55, width:640, height:480 ];
+
+	var showed;
+
+	function MovieMenuLayer(win, par)
+	{
+		super.ExtendMenuLayer(...);
+		name	= "ムービーメニュレイヤー";
+
+		var w = win.scWidth, h = win.scHeight;
+		setSize(w, h);
+		fillRect(0, 0, w, h, 0x80000000);
+		loadImages("movie_menu");
+		setSizeToImageSize();
+//		focusable	= true;
+
+		title	= new MenuTitleLayer(win, this, "movie_title", 27, 20, 1, 11);
+
+		var md = movietitledata;
+		var mt = movietitles	= createButtons(win, this, md);
+		for(var i=0; i<md.count; i++)
+		{
+			if(sf.playedMovie[md[i][6]])
+			{
+				mt.onMouseEnter	= function()
+				{
+					global.ExButtonLayer.onMouseEnter(...);
+					parent.onEnterMovieButton(this);
+				} incontextof mt;
+				mt.onFocus	= function()
+				{
+					global.ExButtonLayer.onFocus(...);
+					parent.onEnterMovieButton(this);
+				} incontextof mt;
+				mt.onMouseLeave	= function()
+				{
+					global.ExButtonLayer.onMouseLeave(...);
+					parent.onLeaveMovieButton(this);
+				} incontextof mt;
+				mt.onBlur	= function()
+				{
+					global.ExButtonLayer.onBlur(...);
+					parent.onLeaveMovieButton(this);
+				} incontextof mt;
+			}
+			else
+			{
+				mt.focusable = mt.enabled = false;
+			}
+			mt	= mt.bros;
+		}
+		mt = movietitles;
+		while(mt!=void)
+		{
+			//	一番最初の利用可能なムービータイトルは上キーに反応しない
+			if(mt.enabled)
+			{
+				mt.onKeyDown = function(key, shift)
+				{
+					if(key==VK_UP)
+						;
+					else
+						global.ExButtonLayer.onKeyDown(key, shift, true);
+				} incontextof mt;
+				break;
+			}
+			mt	= mt.bros;
+		}
+
+		buttons	= createButtons(win, this, buttondata);
+		back	= new MenuBackButtonLayer(win, this);
+
+		var playbtn = buttons.get("play");
+		var fullbtn = buttons.get("fullscreen");
+		with(playbtn)
+		{
+			.hitThreshold	= 0;
+			.onKeyDown	= function(key, shift)
+			{
+				if(key==VK_LEFT)
+					;
+				else
+					global.ExButtonLayer.onKeyDown(key, shift, true);
+			} incontextof playbtn;
+		}
+		with(fullbtn)
+		{
+			.hitThreshold	= 0;
+			.lower			= back;
+			.lefter			= playbtn;
+			.onKeyDown	= function(key, shift)
+			{
+				if(key==VK_DOWN)
+					lower.focus();
+				else if(key==VK_LEFT)
+					lefter.focus();
+				else
+					global.ExButtonLayer.onKeyDown(key, shift, true);
+			} incontextof fullbtn;
+		}
+		fullscreen	= false;
+
+		back.upper	= buttons.get("fullscreen");
+		back.lefter	= buttons.get("play");
+		back.onKeyDown	= function(key, shift)
+		{
+			if(key==VK_UP)
+				upper.focus();
+			else if(key==VK_LEFT)
+				lefter.focus();
+			else
+				global.MenuBackButtonLayer.onKeyDown(key, shift, true);
+		} incontextof back;
+
+		video	= window.movie;
+		video.onStatusChanged	= onStatusChanged;
+
+		curstatus	= "stop";
+	}
+
+	function finalize()
+	{
+		video.onStatusChanged	= global.Movie.onStatusChanged;
+		release(magnifier_mover);
+		release(magnifier);
+		release(largetitle);
+		release(movietitles);
+		release(buttons);
+		release(back);
+		release(title);
+		super.finalize(...);
+	}
+
+	function show()
+	{
+		if(!showed)
+		{
+			showed	= true;
+			memorizeCurrentBGM();
+			stopBGM();
+
+			super.show();
+			title.open();
+			back.open();
+			focus();
+		}
+	}
+
+	function hide()
+	{
+		if(showed)
+		{
+			showed	= false;
+			stopMovie();
+			restoreBGM();
+			super.hide();
+			title.close();
+			back.close();
+		}
+	}
+
+	function closeThis()
+	{
+		parent.closeChild(this);
+	}
+
+	function playMovie()
+	{
+		if(curmovie===void || !Storages.isExistentStorage(movietitledata[curmovie][6]))
+		{
+			var btn = buttons.get("play");
+			btn.state	= btn.state!=0 ? 1 : 0;	//	再生できなかったのでOFF状態に戻す
+			return;
+		}
+
+//		dm("fullscreen = "+fullscreen);
+		with(video)
+		{
+			playing	= false;
+			if(fullscreen)
+			{
+				//	画面サイズを変更する
+				var fl = false;
+				fl <-> window.fullScreen;	//	状態保存
+				window.setInnerSize(videorect.width, videorect.height);
+				fl <-> window.fullScreen;	//	元に戻す
+
+				largetitle.setPos(0, 0);
+				.setBounds(0, 0, videorect.width, videorect.height);
+				playing	= 2;	//	フルスクリーンプレイ
+			}
+			else
+				.setBounds(videorect.left, videorect.top, videorect.width, videorect.height);
+
+			window.isPossibleChangeScreen	= false;	//	ウィンドウモードを変更できないように。
+			.open(movietitledata[curmovie][6]);	//	開く
+			.visible	= true;
+			.play();
+			playing		|= true;	//	再生が開始されていたら「再生中」
+
+			var btn = buttons.get("play");
+			btn.state	= 3 if btn.state==0;	//	再生が始まったので、ON状態にする
+		}
+		playingMovie	= curmovie;
+		return true;
+	}
+
+	function stopMovie()
+	{
+		if(playing)
+		{
+			video.stop();
+			video.visible	= false;
+			playing	= false;
+		}
+		var btn = buttons.get("play");
+		btn.state	= 0 if btn.state==3;	//	OFF状態に戻す
+		playingMovie	= void;
+	}
+
+	function onEnterMovieButton(btn)
+	{
+		curmovie= btn.id;
+		leave	= false;
+	}
+
+	function onLeaveMovieButton(btn)
+	{
+		leave	= true;
+	}
+
+	function onMouseDown(x, y, button, shift)
+	{
+		if(!showed)	return;
+		if(button==mbLeft && inRect(x, y, videorect))
+		{
+			if(playing)	stopMovie();
+			else		playMovie();
+		}
+		else if(button==mbRight)
+			closeThis();
+	}
+
+	function onButtonDown(btn)
+	{
+		if(!showed)	return;
+		if(typeof btn.id == "Integer")
+		{
+			//	ムービーをクリック
+			if(playing)
+			{
+				var pm = playingMovie;
+				stopMovie();
+				if(pm !== curmovie)
+					playMovie();
+			}
+			else
+				playMovie();
+		}
+		switch(btn.id)
+		{
+		case "play":
+			if(!playing)
+				playMovie();
+			break;
+
+		case "fullscreen":
+			fullscreen	= true;
+			if(playing)
+			{
+				stopMovie();	//	再生中だったら一度停止
+//				playMovie();	//	再生し直す
+			}
+			break;
+
+		case "back":
+			closeThis();
+			break;
+		}
+	}
+
+	function onButtonUp(btn)
+	{
+		if(!showed)	return;
+		switch(btn.id)
+		{
+		case "play":
+			if(playing)
+				stopMovie();
+			break;
+
+		case "fullscreen":
+			fullscreen	= false;
+			if(playing)
+			{
+				stopMovie();	//	再生中だったら一度停止
+//				playMovie();	//	再生し直す
+			}
+			break;
+		}
+	}
+
+	function onMagnifyFinished()
+	{
+		magnifier.visible	= false;
+	}
+
+	function onStatusChanged(status)
+	{
+//		dm("movie status: "+curstatus+" to "+status);
+		if(curstatus == "play" && status == "stop")
+		{
+			//	再生状態から停止状態に変わるときのみ以下を実行
+			if(playing==3)
+			{
+				//	フルスクリーン再生の時だけ
+				largetitle.setPos(videorect.left, videorect.top);
+
+				var fl = false;
+				fl <-> window.fullScreen;	//	状態保存
+				window.setInnerSize(800, 600);
+				fl <-> window.fullScreen;	//	元に戻す
+			}
+
+			stopMovie();	//	停止状態にする。
+			window.isPossibleChangeScreen	= true;	//	ウィンドウモードを変更できるように。
+		}
+		curstatus	= status;	//	ステータスを記録
+	}
+
+	property curmovie
+	{
+		setter(m)
+		{
+			if(m !== _curmovie)
+			{
+				_curmovie	= m;	//	選択ムービーを変更
+
+				var md = movietitledata;
+				if(m>=0 && m<md.count)
+				{
+					//	ムービー再生領域に大きなタイトルを表示
+					dm("set curmovie to "+md[m][6]);
+					largetitle	= new global.FadeLayer(window, this) if largetitle==void;
+					with(largetitle)
+					{
+						.opacity	= 0;
+						.loadImages(md[m][7]);
+						.setSizeToImageSize();
+						.setPos(videorect.left, videorect.top);
+						.show(400);
+						.onMouseDown= function()
+						{
+							parent.onMouseDown(...);
+						};
+						.onMouseUp	= function()
+						{
+							parent.onMouseUp(...);
+						};
+						.onMouseEnter	= function()
+						{
+							parent.leave	= false;
+						};
+						.onMouseLeave	= function()
+						{
+							parent.leave	= true;
+						};
+					}
+
+					//	大きくなるの作成
+					magnifier	= new global.MagnifyLayer(window, this) if magnifier==void;
+					with(magnifier)
+					{
+						.opacity	= 0;	//	表示を消してから処理を開始する
+						.setImage(largetitle);
+					}
+
+					//	大きくさせるのを作成
+					magnifier_mover	= new ComplexLinearMover(magnifier) if magnifier_mover==void;
+					with(magnifier_mover)
+					{
+						var lt = largetitle;
+						var mt = movietitles;
+						.finish();
+						.init(400, 0, onMagnifyFinished);
+						.add("centerleft",	md[m][4]+mt.width\2,	lt.left+lt.width\2);
+						.add("centertop",	md[m][5]+mt.height\2,	lt.top+lt.height\2);
+						.add("opacity",		192, 64);
+						.add("magnify",		1888, 10000);
+						.start();
+					}
+					magnifier.visible	= true;
+				}
+			}
+		}
+		getter	{ return _curmovie; }
+	}
+}
+
+class MagnifyLayer extends FadeLayer
+{
+	var src;	//	拡縮の元データ
+	var cl, ct;	//	中心点の座標
+	var mag;	//	倍率
+
+	function MagnifyLayer(win, par)
+	{
+		super.FadeLayer(...);
+		hitType		= htMask;
+		hitThreshold= 256;
+	}
+
+	function finalize()
+	{
+		super.finalize(...);
+	}
+
+	function setImage(src)
+	{
+		this.src	= src;
+	}
+
+	function draw()
+	{
+		stretchCopy(0, 0, width, height, src, 0, 0, src.imageWidth, src.imageHeight, stFastLinear);
+	}
+
+	function onPaint()
+	{
+		super.onPaint(...);
+		draw();
+	}
+
+	property centerleft
+	{
+		setter(l)
+		{
+			if(cl != l)
+			{
+				left	+= l - cl;
+				cl		= l;
+			}
+		}
+		getter	{ return cl; }
+	}
+
+	property centetop
+	{
+		setter(t)
+		{
+			if(ct != t)
+			{
+				top	+= t - ct;
+				ct	= t;
+			}
+		}
+		getter	{ return ct; }
+	}
+
+	property magnify
+	{
+		setter(m)
+		{
+			if(mag != m)
+			{
+				dm("magnify = "+m);
+				mag	= m;
+				m	/= 10000;
+				var w = int(src.imageWidth * m + 0.5);
+				var h = int(src.imageHeight * m + 0.5);
+				setPos(centerleft - int(w / 2 + 0.5), centertop - int(h / 2 + 0.5));
+				setSize(w, h);
+				draw();
+			}
+		}
+		getter	{ return mag; }
+	}
+}
+
+	
+/*----------------------------------------------------------------------------/
+/	
+/----------------------------------------------------------------------------*/
+@endif

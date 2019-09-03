@@ -1,0 +1,223 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) TYPE-MOON All Rights Reserved.
+/		インタリュードメニュー
+/----------------------------------------------------------------------------*/
+@if(__INTERLUDEMENULAYER_DEFINED__==0)
+@set(__INTERLUDEMENULAYER_DEFINED__=1)
+
+Scripts.execStorage("ExtendMenuLayer.tjs");
+
+var InterludeInfoBGColor	= 0xFF5A845A;
+var InterludeInfoTextColor	= 0xFFFFFF;
+var InterludeInfoShadowColor= 0x79B57B;
+var InterludeInfoFontHeight	= 16;
+var InterludeInfoLineSpacing= 1;
+var InterludeInfoLeft		= 24;
+var InterludeInfoTop		= 504;
+var InterludeInfoWidth		= 595;
+var InterludeInfoHeight		= 51;
+var InterludeInfoIndentWidth= InterludeInfoFontHeight;
+var InterludeInfoLineCount	= (InterludeInfoHeight + InterludeInfoLineSpacing) \ (InterludeInfoFontHeight+InterludeInfoLineSpacing);
+var InterludeShadowPower	= 512;
+var InterludeInfoShadowWidth= 2;
+
+var InterludeStartNo		= 1;
+var InterludeEndNo			= 30;
+var InterludeButtonID		= "interlude";
+var InterludeButtonLeft		= 77;
+var InterludeButtonStepSideways	= 237;
+var InterludeButtonTop		= 79;
+var InterludeButtonStepLengthwise	= 40;
+var InterludeButtonStep		= 10;
+var InterludeDataFile		= "インタリュード.txt";
+var InterludeButtonImage	= "inter";
+
+class InterludeMenuLayer extends ExtendMenuLayer
+{
+	var owner;
+
+	var fadeouttime	= 300;
+
+	var buttons;
+	var buttondata	= [
+		[ 3, "back", "interback", "エクストラメニューへ戻ります。", 668, 539 ]
+	];
+
+	var ildata;	//	インタリュードデータ
+
+	var infobacklayer;	//	説明を表示する部分の背景を保持しておくレイヤー
+
+	function InterludeMenuLayer(win, par)
+	{
+		super.ExtendMenuLayer(...);
+		name	= "インタリュードレイヤー";
+
+		owner	= par;
+		loadImages("inteludeバック");
+		setSizeToImageSize();
+		setPos(0, 0);
+		font.height	= InterludeInfoFontHeight;
+
+		var sw = InterludeInfoShadowWidth;
+		var sw2= sw << 1;
+		infobacklayer	= new global.Layer(win, this);
+		infobacklayer.setImageSize(InterludeInfoWidth+sw2, InterludeInfoHeight+sw2);
+		infobacklayer.copyRect(0, 0, this, InterludeInfoLeft-sw, InterludeInfoTop-sw,
+			InterludeInfoWidth+sw2, InterludeInfoHeight+sw2);
+
+		buttons	= createButtons(win, this, buttondata);
+
+		//	インタリュードデータを読み込む
+		ildata	= [ void ];	//	0行目は無いので
+		var lines = [].load(InterludeDataFile);
+		for(var i=0; i<lines.count; i++)
+		{
+			//	空行やコメント行は無視する
+			if(lines[i].length < 1 || lines[i][0] == "#")
+				continue;
+
+			//	タブで区切られたデータを取り出す
+			var param = [].split("\t", lines[i]);
+
+			if(!Storages.isExistentStorage(param[1]))
+				dm(@"インタリュードスクリプト「${param[1]}」は存在しません。");
+			else
+				//	タイトルが登録されているなら
+				ildata.add(param);	//	リストに追加
+		}
+
+		//	インタリュードボタンを作成
+		var btn;
+		var ok = sf.interludeOk;
+		var l = InterludeButtonLeft, t = InterludeButtonTop;
+		var step = InterludeButtonStepLengthwise;
+		for(var n=InterludeStartNo; n<=InterludeEndNo; n++)
+		{
+//			if(ok[n] && ildata[n]!=void)
+			{
+				//	ボタン作成
+				var no = (n<10?"0":"")+n;
+				btn = buttons.add(InterludeButtonID+n, l, t, InterludeButtonImage+no, "インタリュード "+no+"\n「"+ildata[n][0]+"」 を再生します。");
+				btn.mode		= 3;
+				btn.visible		= true;
+				btn.focusable	= true;
+				btn.opacity		= 255;
+
+				//	詳細説明用
+				btn["interludedata"]	= ildata[n];
+				btn.onMouseEnter= function() {
+					global.ExButtonLayer.onMouseEnter();
+					parent.drawInterludeInfo(interludedata);
+				} incontextof btn;
+				btn.onMouseLeave= function() {
+					global.ExButtonLayer.onMouseLeave();
+					parent.eraseInterludeInfo();
+				} incontextof btn;
+			}
+			if(n%InterludeButtonStep==0)
+			{
+				l	+=InterludeButtonStepSideways;		//	次の行へ
+				t	= InterludeButtonTop;
+			}
+			else
+				t	+= InterludeButtonStepLengthwise;	//	一段下へ
+		}
+	}
+
+	function finalize()
+	{
+		release(ildata);
+		release(buttons);
+		release(infobacklayer);
+		super.finalize(...);
+	}
+
+	function show()
+	{
+		super.show(...);
+		memorizeCurrentBGM();
+		stopBGM();
+//		startBGM(?)
+		focusable			= true;
+		window.focusedLayer	= this;
+	}
+
+	function hide()
+	{
+		dm("hide");
+		restoreBGM();
+		super.hide(fadeouttime, 0);
+	}
+
+	function loadInterlude(no)
+	{
+		dm("load interlude: "+ildata[no][0]);
+		owner.hide(fadeouttime, 0);
+		gamemenu.changeMenuMode(2);	//	インタリュード用のメニュー
+		window.fore.messages[0].visible	= true;		//	メッセージウィンドウ表示
+		owner.plugin.setSystemMode("scenario");	//	処理形態をシナリオモードに
+		window.processCall(ildata[no][1], "*start");//	インタリュードスクリプトを呼出
+	}
+
+	function drawInterludeInfo(text, start=2)
+	{
+		//	説明文の表示
+		var l = InterludeInfoLeft;
+		var t = InterludeInfoTop;
+		drawText(l, t, "｢"+text[0]+"｣",
+			InterludeInfoTextColor,,,
+);//			InterludeShadowPower, InterludeInfoShadowColor, InterludeInfoShadowWidth);
+		l += InterludeInfoIndentWidth;
+		t += InterludeInfoFontHeight+InterludeInfoLineSpacing;
+		for(var i=0; i<InterludeInfoLineCount-1; i++)
+		{
+			drawText(l, t, text[i+start],
+				InterludeInfoTextColor,,,
+);//				InterludeShadowPower, InterludeInfoShadowColor, InterludeInfoShadowWidth);
+			t += InterludeInfoFontHeight+InterludeInfoLineSpacing;
+		}
+	}
+
+	function eraseInterludeInfo()
+	{
+		//	説明文の消去
+		var sw = InterludeInfoShadowWidth;
+		copyRect(InterludeInfoLeft-sw, InterludeInfoTop-sw, infobacklayer,
+			0, 0, InterludeInfoWidth+(sw<<1), InterludeInfoHeight+(sw<<1));
+	}
+
+	function onMouseDown()
+	{
+		if(inTransition)
+			;//thumbnailLayer.onMouseDown(...);
+		else
+			parent.onMouseDown(...);
+	}
+	function onMouseUp()	{	parent.onMouseUp(...); }
+
+	function onButtonDown(btn)
+	{
+		if(btn.id.substr(0, InterludeButtonID.length) == InterludeButtonID)
+		{
+			//	インタリュードボタン
+			var no = +btn.id.substr(InterludeButtonID.length);
+			if(ildata[no]!=void)
+				loadInterlude(no);
+		}
+		else
+		{
+			//	それ以外のボタン
+			switch(btn.id)
+			{
+			case "back":
+				hide();
+				break;
+			}
+		}
+	}
+}
+
+/*----------------------------------------------------------------------------/
+/	
+/----------------------------------------------------------------------------*/
+@endif

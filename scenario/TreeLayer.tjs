@@ -1,0 +1,562 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) TYPE-MOON All Rights Reserved.
+/		ツリー表示とデータ保持
+/			レイヤーを一枚にしてリソース消費と高速処理を実現(最初からヤレ)
+/----------------------------------------------------------------------------*/
+@if(__TREELAYER_DEFINED__==0)
+@set(__TREELAYER_DEFINED__=1)
+
+Scripts.execStorage( "ControlLayer.tjs" );
+Scripts.execStorage( "BarLayer.tjs" );
+Scripts.execStorage( "ImageList.tjs" );
+
+class TreeLayer extends ControlLayer
+{
+	var root;		//	データのルート
+	var _serialno;	//	データの総数
+	var imglist;	//	ツリーで使用する画像リソース
+
+	var selected;	//	選択中のアイテム
+
+	var selcolor	= 0xFF000080;	//	選択時の背景色
+	var disablecolor= 0xFF404040;	//	無効時の背景色
+
+	var bar;		//	スクロールバーレイヤー
+	var pos;		//	ツリー表示開始位置
+
+	var spacing	= 2;//	隙間
+
+	var separator;	//	fullnameで出力する時に項目を分ける文字(列)
+
+	var closedid= 0;//	閉じているときのアイコンID
+	var openedid= 1;//	開いているときの　　〃
+
+	var pointedItem;//	現在指しているアイテム
+
+	function TreeLayer(win, par, fh=16, abs_pos=0)
+	{
+		LAYERTYPE	= "TreeLayer";
+		super.ControlLayer(win, par);
+		name	= "TreeLayer";
+
+		bar	= new global.BarLayer(win, this);
+		bar.vertical	= true;
+		bar.target		= this;
+
+		root		= new TreeGroup(this, void, "", void, void, void);
+		root.open	= true;	//	常に開かれている
+		_serialno	= 0;
+
+		pos			= 0;
+		font.height	= fh;
+		textcolor	= 0x000000;
+		bgcolor		= 0xFFFFFFFF;
+		target		= win;	//	基本的には登録されているウィンドウへメッセージを送る
+		pointedItem	= void;
+	}
+
+	function finalize()
+	{
+		release(root);
+		super.finalize(...);
+	}
+
+	function addItem()
+	{
+		var newitem = root.addItem(...);
+		bar.setRange(root.itemHeight, height);
+		return newitem;
+	}
+
+	function addGroup(name, iconid=-1, data=void, openiconid=-1)
+	{
+		iconid		= closedid if iconid<0;
+		openiconid	= openedid if openiconid<0;
+
+		var newgroup = root.addGroup(name, iconid, data, openiconid);
+		bar.setRange(root.itemHeight, height);
+		return newgroup;
+	}
+
+	function clear()
+	{
+		root.clear();
+		invalidate root;
+
+		root	= new TreeGroup(this, void, "", void, void, void);
+		root.opened	= true;
+		_serialno	= 0;
+
+		pointedItem	= void;
+	}
+
+	function updatePos()
+	{
+		bar.setRange(root.itemHeight, height);
+		update();
+	}
+
+	function setSize(w, h)
+	{
+		super.setSize(...);
+		fillRect(0, 0, w, h, bgcolor);
+		bar.setPos(clipWidth - font.height, 0);
+		bar.setSize(font.height, height);
+	}
+
+	function selectChanged(item, no=-1)
+	{
+		root.unselect();
+		item.selected	= true;
+
+		if(no<0)	//	上からの順番が指定されていない時は
+		{
+			//	上から何番目かを調べる
+			var items = getAllValidItems(), i;
+			for(i=0; i<items.count; i++)
+			{
+				if(items[i] == item)
+					break;
+			}
+			no	= i;
+		}
+
+		//	見える位置にバーを移動させる
+		var ct = clipTop, ch = clipHeight;
+		var nextline = itemHeight;
+		var y = ct - bar.value + nextline * no;
+		if(y+nextline>ct+ch)bar.value	+= (y+nextline) - (ct+ch);
+		else if(y<ct)		bar.value	-= ct - y;
+
+		if(target!=void && typeof target.onChanged!="undefined")
+			target.onChanged(this, item);
+		update();
+	}
+
+	function searchItem(x, y)
+	{
+		y -= clipTop - bar.value;	//	仮想ツリーでの絶対座標
+
+		var it = getAllValidItems();
+		var ih = itemHeight;
+		for(var i=0; i<it.count; i++)
+		{
+			if(y>=0 && y<=ih)
+				return it[i];
+			y -= ih;
+		}
+		return void;
+	}
+
+	function getAllValidItems()
+	{
+		var it = [];
+		it.assign(root.items);
+		for(var i=0; i<it.count; i++)
+		{
+			if(!it[i].isItem && it[i].opened)
+			{
+				var src = it[i].items;
+				for(var j=src.count-1; j>=0; j--)
+					it.insert(i+1, src[j]);
+			}
+		}
+		return it;
+	}
+
+	function draw()
+	{
+		var it = getAllValidItems();
+		var grp = [ root ];
+		var base = root;
+		var cl = clipLeft, ct = clipTop, cw = clipWidth, ch = clipHeight;
+		var tc = textcolor, bc = bgcolor;
+		fillRect(cl, ct, cw, ch, bc);	//	背景消去
+		var x = cl;
+		var y = ct - bar.value;
+		var fh = font.height;
+		var il = imglist;
+		var nextline = itemHeight;
+		var ic;
+		var pi = pointedItem;
+		for(var i=0; i<it.count; i++)
+		{
+			//	このアイテムの所属グループが現在のグループでないとき
+			var ti = it[i];
+			while(ti.group != grp[grp.count-1])
+			{
+				//	一つ前のグループに戻る
+				x -= fh;
+				grp.erase(grp.count-1);
+			}
+
+			//	クリッピング領域に入るときのみ描画
+			if(y + nextline > ct || y < ct + ch)
+			{
+				var c = tc;
+				if(ti.selected)
+				{
+					fillRect(x, y, cw - x + cl, fh, selcolor);
+					c = bc & 0xFFFFFF;
+				}
+				if((ic = il.getImage(ti.iconid))!=void)
+				{
+					pileRect(x, y, ic, 0, 0, ic.width, ic.height);	//	アイコン
+					drawText(x + ic.width, y, ti.name, c);			//	文字列
+				}
+				else
+					drawText(x, y, ti.name, c);			//	文字列
+				if(ti==pi)
+					fillRect(x, y+fh, cw-x+cl, 1, selcolor);	//	マウスが乗っている項目
+			}
+
+			//	このアイテムがグループのとき
+			if(!ti.isItem)
+			{
+				x += fh;
+				grp[grp.count] = ti;
+			}
+
+			y	+= nextline;	//	次のアイテムは次の行
+		}
+	}
+	function onPaint()
+	{
+		super.onPaint(...);
+		draw();
+	}
+
+	function onMouseWheel(shift, delta, x, y)
+	{
+		super.onMouseWheel(...);
+		if(enabled)
+			bar.onMouseWheel(...);
+	}
+
+	function onClick(x, y)
+	{
+		super.onClick(...);
+		var it = searchItem(...);
+		if(it!=void)
+		{
+			selectChanged(it);
+			if(!it.isItem)
+			{
+				it.opened	= !it.opened;
+//				if(it.opened)
+//					bar.value	+= it.top;
+			}
+		}
+	}
+
+	function onMouseDown(x, y, button, shift)
+	{
+		if(button == mbRight)
+		{
+			var it = searchItem(...);
+			if(it!=void && it.group!=root)
+				it.group.opened	= !it.group.opened;
+		}
+		focus();
+	}
+
+	function onMouseMove(x, y)
+	{
+		super.onMouseMove(...);
+		var it = searchItem(...);
+		if(it!=pointedItem)
+		{
+			if(it!=void)
+				it.pointed	= true;
+			if(pointedItem!=void)
+				pointedItem.pointed	= false;
+			pointedItem	= it;
+		}
+	}
+
+	function onMouseEnter()
+	{
+		super.onMouseEnter(...);
+		focusable	= true;
+	}
+
+	function onMouseLeave()
+	{
+		super.onMouseLeave(...);
+		if(pointedItem!=void)
+			pointedItem.pointed	= false;
+		pointedItem	= void;
+		focusable	= false;
+	}
+
+	function onScroll(bar, pos)
+	{
+		this.pos	= pos;
+		update();
+	}
+
+	function onKeyDown(key, shift)
+	{
+		switch(key)
+		{
+		case VK_UP:
+			//	一つ上の項目へ
+			var items = getAllValidItems();
+			if(selected==void)	{ selectChanged(items[0]); return; }
+			for(var i=1; i<items.count; i++)
+			{
+				if(items[i] == selected)
+				{
+					selectChanged(items[i-1]);
+					return;
+				}
+			}
+			break;
+
+		case VK_DOWN:
+			//	一つ下の項目へ
+			var items = getAllValidItems();
+			if(selected==void)	{ selectChanged(items[items.count-1]); return; }
+			for(var i=items.count-2; i>=0; i--)
+			{
+				if(items[i] == selected)
+				{
+					selectChanged(items[i+1]);
+					return;
+				}
+			}
+			break;
+
+		case VK_SPACE:
+		case VK_RETURN:
+		case VK_RIGHT:
+			//	項目を開く
+			var it = selected;
+			if(it!=void && !it.isItem)
+				it.opened	= !it.opened;
+			break;
+
+		case VK_LEFT:
+		case VK_ESCAPE:
+			//	項目を閉じる
+			var it = selected;
+			if(it!=void && it.group!=root)
+			{
+				it.group.opened	= false;
+				selectChanged(it.group);
+			}
+			break;
+		}
+	}
+
+	property a_name		{ getter { return selected!=void ? selected.name : ""; } }
+	property fullname	{ getter { return selected!=void ? selected.fullname : ""; } }
+	property data		{ getter { return selected!=void ? selected.data : void; } }
+	property isItem		{ getter { return selected!=void ? selected.isItem : false; } }
+	property isSelected	{ getter { return selected!=void; } }
+	property value		{ getter { return a_name; } }
+	property serial		{ getter { return _serialno++; } }
+	property itemHeight	{ getter { return font.height + spacing; } }
+	property scrolling {
+		setter(s)	{ bar.scrolling	= s; }
+		getter		{ return bar.scrolling; }
+	}
+}
+
+//	ツリー中の基本単位
+class TreeItem
+{
+	var parent;
+	var id;
+	var group;
+	var name;
+	var data;
+	var normaliconid;
+	var _selected;
+	var _pointed;
+
+	function TreeItem(par, group, name, iconid=-1, data=void)
+	{
+		parent		= par;
+		id			= par.serial;
+		this.group	= group;
+		this.name	= name;
+		this.data	= data;
+		this.normaliconid	= iconid;
+
+		selected	= false;
+	}
+
+	function finalize()
+	{
+	}
+
+	function clear()
+	{
+		invalidate this;
+	}
+
+	function serach(id)
+	{
+		if(this.id == id)
+			return this;
+		else
+			return void;
+	}
+
+	function unselect()
+	{
+		_selected	= false;
+	}
+
+	property a_name
+	{
+		getter
+		{
+			if(group != void)
+				return group.name;
+			else
+				return name;
+		}
+	}
+
+	property fullname
+	{
+		getter
+		{
+			if(group != void)
+				return group.fullname + parent.separator + name;
+			else
+				return name;
+		}
+	}
+
+	property iconid		{ getter { return normaliconid; } }
+	property value		{ getter { return a_name; } }
+	property itemHeight	{ getter { return parent.itemHeight; } }
+	property isItem		{ getter { return true; } }
+	property imglist	{ getter { return parent.imglist; } }
+
+	property selected
+	{
+		setter(b)
+		{
+			if(b == _selected)
+				return;
+			if(b)
+				parent.selected	= this;
+			_selected	= true;
+		}
+		getter	{ return _selected; }
+	}
+
+	property pointed
+	{
+		setter(b)
+		{
+			if(b == _pointed)
+				return;
+			_pointed	= true;
+			parent.update();
+		}
+		getter	{ return _pointed; }
+	}
+}
+
+//	グループ
+class TreeGroup extends TreeItem
+{
+	var items = [];
+	var closeiconid;
+	var openiconid;
+	var _opened;
+
+	function TreeGroup(par, group, name, iconid=-1, data=void, openiconid=-1)
+	{
+		super.TreeItem(...);
+		this.closeiconid= iconid<0&&group!=void ? group.closeiconid : iconid;
+		this.openiconid	= openiconid<0&&group!=void ? group.openiconid : openiconid;
+
+		_opened	= false;
+	}
+
+	function finalize()
+	{
+		invalidate items;
+		super.finalize(...);
+	}
+
+	function addItem(name, iconid, data)
+	{
+		return items[items.count]	= new global.TreeItem(parent, this, name, iconid, data);
+	}
+
+	function addGroup(name, iconid, data, openiconid)
+	{
+		return items[items.count]	= new global.TreeGroup(parent, this, name, iconid, data, openiconid);
+	}
+
+	function clear()
+	{
+		var item = items;
+		for(var i = item.count-1; i>=0; i--)
+			item[i].clear();
+		super.clear();
+	}
+
+	function search(id)
+	{
+		var trg;
+		if((trg = super.search(id))!=void)
+			return trg;
+
+		var item = items;
+		for(var i=item.count-1; i>=0; i--)
+		{
+			if((trg = item[i].search(id))!=void)
+				return trg;
+		}
+		return void;
+	}
+
+	function unselect()
+	{
+		super.unselect();
+		var item = items;
+		for(var i=item.count-1; i>=0; i--)
+			item[i].unselect();
+	}
+
+	property opened
+	{
+		setter(b)
+		{
+			if(b == _opened)
+				return;
+			_opened	= b;
+
+			parent.updatePos();
+		}
+		getter	{ return _opened; }
+	}
+
+	property itemHeight
+	{
+		getter
+		{
+			var h = super.itemHeight;
+			if(opened)
+			{
+				var item = items;
+				for(var i=item.count-1; i>=0; i--)
+					h += item[i].itemHeight;
+			}
+			return h;
+		}
+	}
+
+	property iconid { getter { return opened ? openiconid : closeiconid; } }
+	property isItem	{ getter { return false; } }
+}
+
+@endif

@@ -1,0 +1,50 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) 1999-2002 TYPE-MOON All Rights Reserved.
+/		メニューレイヤー(各種メニューのベース)
+/----------------------------------------------------------------------------*/
+@if(__MENULAYER_DEFINED__==0)
+@set(__MENULAYER_DEFINED__=1)
+
+Scripts.execStorage("ExButtonLayer.tjs");
+
+class MenuLayer extends FadeLayer
+{
+	var steward;			//	親に対しての要望を聞く関数
+	var closekey;			//	閉じるキー
+
+	function MenuLayer(win, par, steward)
+	{
+		super.FadeLayer(...);
+		this.steward	= steward;
+	}
+
+	function finalize()
+	{
+		super.finalize(...);
+	}
+
+	function closeParent()
+	{
+		steward("close");
+	}
+
+	function imclosed()
+	{
+		steward("imclosed", this);
+	}
+
+	function checkCloseKey(key, shift)
+	{
+		if(key == closekey)
+		{
+			closeParent();
+			return true;
+		}
+		return false;
+	}
+}
+
+/*-----------------------------------------------------------------------------
+/	End of File
+/----------------------------------------------------------------------------*/
+@endif

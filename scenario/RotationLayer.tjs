@@ -1,0 +1,135 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) TYPE-MOON All Rights Reserved.
+/		回転するレイヤー
+/----------------------------------------------------------------------------*/
+@if(__ROTATIONLAYER_DEFINED__==0)
+@set(__ROTATIONLAYER_DEFINED__=1)
+
+Scripts.execStorage("subroutine.tjs");
+
+class RotationLayer extends FadeLayer
+{
+	var affine;
+
+	var rtime, raccel;
+	var rstarttick;
+	var rlasttick;
+
+	var isOpen;
+	var isRotation;
+
+	var cl, ct;
+	var srad, erad;
+
+	var srclayer;
+
+	function RotationLayer(win, par, storage, l, t, cl, ct, w, h, srad, erad, time, accel)
+	{
+		super.FadeLayer(...);
+		setSize(w, h);
+		setPos(l, t);
+		fillRect(0, 0, w, h, 0x00000000);
+
+		this.cl		= cl!==void ? +cl : (w>>2);
+		this.ct		= ct!==void ? +ct : (h>>2);
+		this.srad	= srad!==void ? +srad : 0;
+		this.erad	= erad!==void ? +erad : Math.PI*2;
+		this.rtime	= time!==void ? +time : 1000;
+		this.raccel	= accel!==void ? +accel : 0;
+
+		with(srclayer = new global.Layer(win, this))
+		{
+			.name	= "RotationLayerSource("+storage+")";
+			.loadImages(storage);
+			.setSizeToImageSize();
+		}
+
+		affine = new easyAffineTransform();
+	}
+
+	function finalize()
+	{
+		stopRotate();
+		release(srclayer);
+		super.finalize(...);
+	}
+
+	function open(time=300, accel=0)
+	{
+		if(!isOpen)
+		{
+			isOpen	= true;
+//			draw(rstarttick = System.getTickCount());
+			super.show(time, accel);
+		}
+	}
+
+	function close(time=300, accel=0)
+	{
+		if(isOpen)
+		{
+			isOpen	= false;
+			super.hide(time, accel, onClosed);
+		}
+	}
+
+	function rotate()
+	{
+		if(!isRotation)
+		{
+			rstarttick = rlasttick	= System.getTickCount();
+			System.addContinuousHandler(draw);
+			isRotation	= true;
+		}
+	}
+
+	function stopRotate()
+	{
+		if(isRotation)
+		{
+			System.removeContinuousHandler(draw);
+			isRotation	= false;
+		}
+	}
+
+	function draw(tick)
+	{
+		//	更新時間が短い時は何もせず戻る
+		if(tick - rlasttick<minInterval)
+			return;
+		rlasttick	= tick;
+
+		var past	= tick - rstarttick;
+		if(past > rtime)
+		{
+			stopRotate();	//	時間がきたら終了
+			past	= rtime;
+		}
+
+		//	現在の角度を得る
+		var rad	= srad + (erad - srad) * calcAccel(past/rtime, raccel);
+//		dm("rad: "+rad+"("+(rad/Math.PI*180)+"度)");
+
+		//	描画
+		var src = srclayer;
+		with(affine)
+		{
+			.clear();	//	行列を消去
+			.addTransferMatrix(-cl, -ct);		//	中心へ移動
+			.addRotateMatrix(rad);				//	回転
+			.addTransferMatrix(cl, ct);		//	元の位置へ
+//			.addMagnifyMatrix(width/src.width, height/src.height);
+			.transformByProgram(this, src, 0, 0, src.width, src.height);
+		}
+	}
+
+	function onClosed()
+	{
+		invalidate this;
+	}
+}
+
+/*----------------------------------------------------------------------------/
+/	
+/----------------------------------------------------------------------------*/
+@endif

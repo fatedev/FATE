@@ -1,0 +1,148 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) TYPE-MOON All Rights Reserved.
+/		サーヴァントのスキルをスクロール可能で表示するレイヤー
+/----------------------------------------------------------------------------*/
+@if(__SKILLSCROLLLAYER_DEFINED__==0)
+@set(__SKILLSCROLLLAYER_DEFINED__=1)
+
+Scripts.execStorage("AutonomyLayer.tjs");
+Scripts.execStorage("ScrollBarLayer.tjs");
+
+class SkillScrollLayer extends AutonomyLayer
+{
+	var bar;
+	var storages	= [];
+	var loadcount	= 0;
+	var layers		= [];
+
+	var spacing		= 8;
+	var bgcolor		= 0xFF000000;
+
+	function SkillScrollLayer(win, par)
+	{
+		super.AutonomyLayer(...);
+		bar	= new ScrollBarLayer(win, this, height, 6, 6);
+		bar.setPos(width - bar.width, 0);
+	}
+
+	function finalize()
+	{
+		for(var i=0; i<layers.count; i++)
+			release(layers[i]);
+		initSkill();
+		super.finalize();
+	}
+
+	function init(l, t, w, h, time=lasttime, accel=lastaccel)
+	{
+		//	サイズ変更
+		setPos(l, t);
+		setSize(w, h);
+		fillRect(0, 0, w, h, bgcolor);
+
+		opacity		= 0;
+		visible		= true;
+		hide(time, accel);	//	設定を借りてくるだけ
+		endopacity	= 255;
+
+		bar.size	= h;
+		bar.left	= width - bar.width;
+		initSkill();
+	}
+
+	function initSkill()
+	{
+		for(var i=0; i<layers.count; i++)
+			release(layers[i]);
+		layers.clear();
+		storages.clear();
+		loadcount	= 0;
+		bar.total	= 0;
+		bar.current	= 0;
+	}
+
+	function addSkill(storage)
+	{
+		storages.add(storage);
+		state	= 10;
+	}
+
+	function handler(tick)
+	{
+		dm("opacity = "+opacity+" / state = "+state);
+		if(state!=10)
+			super.handler(...);
+		else
+			construct();
+	}
+
+	function construct(per)
+	{
+		if(state==10)
+		{
+			if(storages.count>loadcount)
+			{
+				//	スキル用の画像を読み込む
+				if(layers[loadcount]==void)
+					layers[loadcount]	= new global.Layer(window, this);
+				layers[loadcount].loadImages(storages[loadcount]);
+
+				//	現在の位置へ出力
+				bar.total	+= layers[loadcount].imageHeight + spacing;
+				bar.area	= height;
+				loadcount++;
+
+				draw();
+				return;
+			}
+			else
+			{
+				bar.total	-= spacing;
+				bar.area	= height;
+				starttick	= System.getTickCount();
+				state	= 1;
+			}
+		}
+		super.construct(...);
+	}
+
+	function draw()
+	{
+		var t = -bar.current;
+		for(var i=0; i<loadcount; i++)
+		{
+			//	表示範囲内のみ
+			var sph = t + layers[i].imageHeight;
+			if(sph >= 0 && t < height)
+			{
+				copyRect(0, t, layers[i], 0, 0, layers[i].imageWidth, layers[i].imageHeight);
+				fillRect(0, sph, width, spacing, bgcolor);
+
+			}
+			t	= sph + spacing;
+		}
+		//	残りを埋める
+		if(t < height)
+		{
+			fillRect(0, t, width, height - t, 0);
+			bar.visible	= false;	dm("bar invisible");
+		}
+		else
+			bar.visible	= true;	dm("bar visible");
+	}
+
+	function onScroll(cur)
+	{
+		draw();
+	}
+
+	function onMouseWheel()
+	{
+		bar.onMouseWheel(...);
+	}
+}
+
+/*----------------------------------------------------------------------------/
+/	
+/----------------------------------------------------------------------------*/
+@endif

@@ -1,0 +1,234 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) 1999-2002 TYPE-MOON All Rights Reserved.
+/		ポップアップレイヤー
+/----------------------------------------------------------------------------*/
+@if(__POPUPLAYER_DEFINED__==0)
+@set(__POPUPLAYER_DEFINED__=1)
+
+Scripts.execStorage("FadeLayer.tjs");
+
+class PopUpLayer extends FadeLayer
+{
+	var defmovetime		= 400;			//	表示、消去の移動時間
+	var defdisappeartime= 1200;			//	表示されてから消えるまでの時間
+	var defaccel		= -2;
+
+	var margin			= [ 16, 16 ];	//	画面右、画面下とのマージン
+
+	var textcolor		= 0x000000;
+	var edgecolor		= void;
+
+	var disappeartimer;					//	消去までのタイマー
+	var disappearsetting	= [];
+
+	var startpos;
+
+	var	scrollstarttimer;
+	var	scrollWait				= 1000;
+	var	scrollPixelPerMilliSec	= 10;
+
+	var popupSoundFile	= "";
+	var popupImageFiles = [
+		"ポップアップ左",
+		"ポップアップ中",
+		"ポップアップ右"
+	];
+	var popupImages = [];
+
+	function PopUpLayer(win, par, fontheight=16)
+	{
+		super.FadeLayer(win, par);
+
+		hitType		= htMask;
+		hitThreshold= 64;
+		opacity		= 192;
+		name		= "PopUp";
+
+		var imf = popupImageFiles;
+		for(var i=0; i<imf.count; i++)
+		{
+			var img = popupImages[i] = new global.Layer(win, par);
+			img.name = "ポップアップ用画像: ";
+			img.loadImages(imf[i]);
+			img.setSizeToImageSize();
+		}
+
+		font.height	= fontheight;
+	}
+
+	function finalize()
+	{
+		release(scrollstarttimer);
+		release(disappeartimer);
+		release(popupImages[2]);
+		release(popupImages[1]);
+		release(popupImages[0]);
+		super.finalize();
+		eraseFromPopUpList(this);
+	}
+
+	function popup(msg, time=defmovetime, disappeartime=defdisappeartime, accel=defaccel)
+	{
+		name	+= "「"+msg+"」";
+		//	サイズを決定
+		var img = popupImages;
+		var i0w = img[0].width;
+		var i2w = img[2].width;
+		var w = font.getTextWidth(msg)+i0w+i2w;
+		var h = img[0].height;
+		setSize(w, h);
+
+		//	背景を描画
+		copyRect(0, 0, img[0], 0, 0, i0w, img[0].height);
+		copyRect(w-i2w, 0, img[2], 0, 0, i2w, img[2].height);
+		stretchCopy(i0w, 0, w-i0w-i2w, height,
+					img[1], 0, 0, img[1].width, img[1].height, stNearest);
+
+		//	メッセージ描画位置を計算
+		var l = i0w;
+		var t = (height - font.getTextHeight(msg)) >> 1;
+
+		//	メッセージを描画
+		if(edgecolor!=void)
+			drawText(l, t, msg, textcolor,,,1024,edgecolor,1);
+		else
+			drawText(l, t, msg, textcolor);
+
+		//	消去準備
+		with(disappeartimer	= new Timer(erase, ""))
+			.interval	= disappeartime;
+
+		//	出現処理
+		var par = parent;
+		var l = par.width - w - margin[0];
+		var t = par.height - h - margin[1];
+		startpos	= par.height;
+		if(l<0)
+		{
+			//	左端が隠れてしまっている
+			setPos(margin[0], par.height);	//	左がわが見えるように
+			move(margin[0], t, 255, time, accel, preliminal);	//	移動後、スクロールを始める
+		}
+		else
+		{
+			//	すべてが見えている状態
+			setPos(l, par.height);	//	初期位置設定
+			move(l, t, 255, time, accel);	//	移動先設定
+
+			disappeartimer.enabled	= true;	//	消去タイマー開始
+		}
+		dm("visual start.");
+
+		disappearsetting[0]	= time;
+		disappearsetting[1]	= accel;
+	}
+
+	function preliminal()
+	{
+		with(scrollstarttimer = new Timer(scrollstart, ""))
+		{
+			.interval	= scrollWait;
+			.enabled	= true;
+		}
+	}
+
+	function scrollstart()
+	{
+		//	スクロール開始
+		release(scrollstarttimer);	scrollstarttimer	= void;
+		var	l		= parent.width - width - margin[0];
+		var	stime	= (margin[0] - l) * scrollPixelPerMilliSec;	//	スクロール時間
+		move(l, top, 255, stime, 0);
+
+		//	消去準備
+		if(disappeartimer isvalid)
+		{
+			with(disappeartimer)
+			{
+				.interval	+= stime;	//	スクロールする時間分遅らせる
+				.enabled	= true;
+			}
+		}
+	}
+
+	function erase()
+	{
+		dm("erase start.");
+		//	消去時間がきた
+		release(scrollstarttimer);	scrollstarttimer	= void;
+		release(disappeartimer);	disappeartimer	= void;
+		move(left, startpos, 0, disappearsetting[0], disappearsetting[1]);
+		suicide(disappearsetting[0]+200);
+	}
+
+	function onMouseDown()
+	{
+		dm("click popup.");
+		//	クリックされた
+		eraseMessage();	//	消去を開始する
+	}
+}
+
+var PopUp = [];	//	ポップアップリスト
+function popupMessage(msg, par=kag.fore.base, time, dtime)
+{
+	eraseMessage();	//	表示されているメッセージを消去する
+//	if(kag.dispPopup)
+	{
+		//	ポップアップ表示設定があるときのみ、ポップアップを出現させる
+		createPopUp(msg, par, time, dtime);
+
+		//	常に表示しておきたいものは、表画面だけでなく裏画面にも追加しておく
+		createPopUp(msg, kag.back.base, time, dtime);		//	裏画面にも作る
+		if(par != kag.fore.base)							//	表画面に表示しないなら
+			createPopUp(msg, kag.fore.base, time, dtime);	//	表画面にも作る
+		//	たとえば、サブメニューで表示しているポップアップは
+		//	サブメニュー、表、裏と3つポップアップを生成したうちのひとつが表示されている
+	}
+}
+
+function createPopUp(msg, par, time, dtime)
+{
+	var popup	= new PopUpLayer(kag, par);
+	popup.popup(msg, time, dtime);
+
+	//	本体の解放にあわせて解放されるように
+	if(typeof par.addFinalizer != "undefined")
+		par.addFinalizer(releaseMessage, popup);
+
+	var ps = (PopUp!=void && isvalid PopUp) ? PopUp : [];
+	ps.add(popup);	//	表示したポップアップを登録
+}
+
+function eraseMessage()
+{
+	var ps = (PopUp!=void && isvalid PopUp) ? PopUp : [];
+	for(var i=0; i<ps.count; i++)
+		ps[i].erase();
+
+}
+
+function releaseMessage(popup)
+{
+	if(popup!=void)
+		release(popup);
+}
+
+function eraseFromPopUpList(popup)
+{
+	//	ポップアップリストから削除
+	var ps = (PopUp!=void && isvalid PopUp) ? PopUp : [];
+	for(var i=0; i<ps.count; i++)
+	{
+		if(ps[i] == popup)
+		{
+			ps.erase(i);
+			break;
+		}
+	}
+}
+
+/*-----------------------------------------------------------------------------
+/	End of File
+/----------------------------------------------------------------------------*/
+@endif

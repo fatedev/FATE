@@ -1,0 +1,634 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) 1999-2002 TYPE-MOON All Rights Reserved.
+/		用語集レイヤー
+/----------------------------------------------------------------------------*/
+@if(__GLOSSARYLAYER_DEFINED__==0)
+@set(__GLOSSARYLAYER_DEFINED__=1)
+
+Scripts.execStorage("ExtendMenuLayer.tjs");
+Scripts.execStorage("ScrollBarLayer.tjs");
+Scripts.execStorage("TextButtonLayer.tjs");
+Scripts.execStorage("subroutine.tjs");
+
+var GlossaryFile = "単語辞書.txt";
+var FontHeight	= 16;
+
+class GlossaryLayer extends ExtendMenuLayer
+{
+	var bgcolor	= 0x80000000;
+	var innercolor	= 0x80000080;
+	var textcolor	= 0xFFFFFF;
+	var shadowcolor	= void;
+
+	var lasttime;
+	var lastaccel;
+
+	var term = [];		//	単語一覧(0：読み/1:名称/2:説明/3:関連項目)
+
+	var indent;			//	インデントサイズ
+
+	var marginL	= 16;
+	var marginT	= 64;
+	var marginR	= 180;
+	var marginB	= 32;
+	var spacing	= 8;	//	リストと解説の隙間
+
+	var list;	//	用語リスト
+	var info;	//	解説を表示する領域
+	var title;	//	タイトルレイヤー
+
+	var listHeight	= 150;	//	用語リストレイヤーの高さ
+
+	var lastfocused;
+
+	var titleimage	= "用語menu";
+
+	function GlossaryLayer(win, par, steward)
+	{
+		super.ExtendMenuLayer(...);
+
+		name	= "用語集レイヤー";
+		var w, h;
+		setSize(w = win.scWidth, h = win.scHeight);
+		fillRect(0, 0, w, h, bgcolor);
+		hitType		= htMask;
+		hitThreshold= 255;	//	すべてスルー
+
+		//	単語の読み込み
+		var lines = [].load(GlossaryFile);
+		var total = 0;
+		var cnt = 0;
+		for(var i=0; i<lines.count; i++)
+		{
+			if(lines[i] == void || lines[i][0] == "#")
+				continue;	//	コメントや空行は無視する
+
+			var params = [].split("\t", lines[i],, true);
+
+			//	出現した用語が既に知っている用語か？
+			if(win.alreadyKnownTerms[params[0]]===void)
+				continue;	//	知らない用語は表示されない
+
+			var t = term[cnt++]	= [];
+			t[0]	= params[1];	//	読み
+			t[1]	= params[0];	//	名称
+			//	説明
+			if(params[2].indexOf("\\n")>=0)
+				t[2]	= [].split("\\n", params[2],, true);
+			else
+				t[2]	= [ params[2] ];
+			if(params.count>3)
+			{
+				t[3] = [];
+				for(var j=3; j<params.count; j++)
+					t[3].add(params[j]);
+			}
+		}
+		invalidate lines;
+
+		//	読みの整列
+		shellsort(term, function(a,b) { return strcmp(a[0], b[0]); });
+
+		//	用語リストレイヤー
+		list	= new TermListLayer(win, this, marginL, marginT, w-(marginL+marginR), listHeight, textcolor, term);
+
+		//	説明レイヤー
+		var infotop = marginT+listHeight+spacing;	//	説明レイヤーの位置
+		var infoheight = h-(marginT+marginB+listHeight+spacing);	//	高さ
+		info	= new TermInfoLayer(win, this, marginL, infotop, w-(marginL+marginR), infoheight, textcolor, shadowcolor);
+
+		//	タイトル
+		title	= new global.KAGLayer(win, this);
+		title.loadImages(titleimage);
+		title.setSizeToImageSize();
+		title.setPos(0, 0);
+		title.hitType	= htMask;
+		title.hitThreshold	= 256;
+		title.visible	= true;
+	}
+
+	function finalize()
+	{
+		invalidate title;
+		invalidate info;
+		invalidate list;
+
+		super.finalize(...);
+	}
+
+	function show(time, accel)
+	{
+		super.show(...);
+		delayFocus(50, list);
+	}
+
+	function onMouseDown()
+	{
+		parent.onMouseDown(...);
+	}
+
+	function onDisplayInfo(no)
+	{
+		info.changeInfo(term[no]);
+		lastfocused	= window.focusedLayer;	//	フォーカスを持っているボタンを記憶
+	}
+}
+
+//	用語のリストを表示するレイヤー
+class TermListLayer extends FadeLayer
+{
+	var term;
+
+	var textcolor;
+
+	var bar;
+	var spacing		= 2;
+	var termbuttons;
+	var termspacing = 16;	//	用語間の間隔(横)
+	var linespacing	= 2;
+
+	var marginL	= 8;
+	var marginT	= 8;
+	var marginR	= 8;
+	var marginB	= 8;
+
+	var createdcount;
+	var maxwidth;
+
+	var wallimage	= "用語ウィンドウ_";
+	var bgcolor		= 0x487370A7;
+	var oncolor		= 0x48E7E7B0;
+
+	var mlw;	//	最も長い単語長
+	var wpl;	//	一行に何個単語を並べられるか
+	var lpp;	//	何行になるか
+	var bh;		//	高さ
+
+	var lastbutton;	//	最後にEnterしたボタン
+	var onbutton;	//	ON状態のボタン
+
+	function TermListLayer(win, par, l, t, w, h, textcolor, term)
+	{
+		super.FadeLayer(...);
+		name	= "用語一覧レイヤー";
+		setPos(l, t);
+		setSize(w, h);
+		drawWall();
+		this.textcolor	= textcolor;
+		this.term	= term;
+		visible		= true;
+		opacity			= 255;
+		createdcount= 0;	//	作成済み用語数
+		maxwidth	= 0;	//	最大幅
+		font.height	= FontHeight;
+		focusable	= true;
+
+		//	スクロールバー配置
+		bar = new ScrollBarLayer(win, this, h, 6, 6);
+		bar.setPos(w - bar.width, 0);
+		bar.moving	= FontHeight;
+		bar.slider.onKeyDown = function(key, shift)
+			{
+				//	メニュー自体を閉じるキーか？
+				if(parent.parent.parent.checkCloseKey(...))
+					return;
+				global.ScrollSliderLayer.onKeyDown(...);
+			} incontextof bar.slider;
+		bar.focusable	= false;	//	フォーカスを受け取らない
+
+		//	用語チェック
+		if(term.count<1)
+		{
+			bar.total	= bar.area	= 1;
+			return;
+		}
+
+		var mw = 0;
+		var ts = termspacing;
+		for(var cnt=term.count-1; cnt>=0; cnt--)
+		{
+			var t = term[cnt];
+			var w = font.getTextWidth(t[1]) + ts;
+			mw	= w if w>mw;
+
+			t[4]	= 0;	//	状態を追加(0:off/1:enter/2:on/3:onenter)
+		}
+		mlw	= mw;	//	最も長い単語長
+		wpl	= clipWidth \ mw;	//	一行あたりの単語数
+		lpp	= term.count \ wpl + ((term.count % wpl)!=0 ? 1 : 0) + 1;	//	何行になるか
+		bh	= font.getTextHeight(term[0][1]) + spacing;
+		lastbutton	= 0;
+		term[lastbutton][4]	= 1;
+		onbutton	= -1;
+
+		//	スクロールバーの可動範囲
+		var ah = lpp * bh + (lpp-1) * linespacing;
+		bar.total	= ah<height ? height : ah;
+		bar.area	= height;
+
+		draw();
+	}
+
+	function finalize()
+	{
+		invalidate bar;
+
+		super.finalize(...);
+	}
+
+	function draw()
+	{
+		for(var cnt=term.count; cnt>=0; cnt--)
+			drawButton(cnt);
+	}
+
+	function drawButton(no, state=-1, on, off)
+	{
+		if(no<0 || no>=term.count)
+			return;	//	範囲外なので処理しない
+
+		//	状態チェック
+		var tm = term[no];
+		state	= tm[4] if state<0;
+		state	|= on if on!==void;
+		state	&= NOT(off) if off!==void;
+		tm[4]	= state;	//	状態更新
+
+		//	位置
+		var x = no % wpl;
+		var y = no \ wpl;
+
+		//	座標計算
+		var t = clipTop + y * (bh + linespacing) - bar.current;
+		if(t + bh < clipTop || t > clipHeight)
+			return;	//	範囲外なので描画の必要なし
+		var l = clipLeft + x * mlw;
+
+		//	消去
+		var w = mlw;
+		if(state & 2)
+		{
+			fillRect(l, t, w, bh, oncolor);
+			fillRect(l, t+bh, w, linespacing, bgcolor);
+		}
+		else
+			fillRect(l, t, w, bh+linespacing, bgcolor);
+
+		//	文字描画
+		drawText(l+1,t+1,tm[1],textcolor);
+
+		//	枠描画
+		if(state & 1)
+		{
+			fillRect(l, t, w-1, 1, 0xFFFFFFFF);
+			fillRect(l, t+1, 1, bh-1, 0xFFFFFFFF);
+			fillRect(l+w-1, t+1, 1, bh-1, 0xFF000000);
+			fillRect(l+1, t+bh-1, w-2, 1, 0xFF000000);
+		}
+	}
+
+	//	指定のボタンが画面内に入るようにスクロールさせる
+	function scroll4button(no)
+	{
+		//	位置
+		var x = no % wpl;
+		var y = no \ wpl;
+
+		//	座標計算
+		var t = clipTop + y * (bh + linespacing) - bar.current;
+		if(t < clipTop)
+		{
+			bar.current	+= t - clipTop;
+		}
+		else if(t > clipHeight)
+		{
+			bar.current	+= (t + bh) - clipHeight;
+		}
+	}
+
+	function drawWall()
+	{
+		var l = new global.Layer(window, this);
+
+		//	隅
+		var wi = wallimage;
+		var w = width, h = height;
+		l.loadImages(wi+"lt");
+		var ltw = l.width, lth = l.height;
+		copyRect(0, 0, l, 0, 0, ltw, lth);
+		l.loadImages(wi+"lb");
+		var lbh = l.height;
+		copyRect(0, h-lbh, l, 0, 0, l.width, lbh);
+
+		//	枠
+		l.loadImages(wi+"t");
+		var th = l.height;
+		stretchCopy(ltw, 0, w-ltw, th, l, 0, 0, l.width, th);
+		l.loadImages(wi+"l");
+		var lw = l.width;
+		stretchCopy(0, lth, lw, h-lth-lbh, l, 0, 0, lw, l.height);
+		l.loadImages(wi+"b");
+		var bh = l.height;
+		stretchCopy(ltw, h-l.height, w-ltw, l.height, l, 0, 0, l.width, l.height);
+
+		//	中身
+//		l.loadImages(wi+"c");
+//		stretchCopy(ltw, lw, w-ltw, h-th-bh, l, 0, 0, l.width, l.height);
+		fillRect(ltw, lw, w-ltw, h-th-bh, bgcolor);
+
+		//	クリッピング領域の設定
+		setClip(lw, th, w-lw, h-th-bh);
+
+		invalidate l;
+	}
+
+	function getButtonNo(x, y)
+	{
+		var lc = (x - clipLeft) \ mlw;
+		if(lc >= wpl)	return -1;
+		var no = (y - clipTop + bar.current) \ (bh+linespacing) * wpl + lc;
+		if(no>=term.count)	return -1;
+		return no;
+	}
+
+	function onFocus()
+	{
+		drawButton(lastbutton, , 1);
+	}
+
+	function onBlur()
+	{
+		drawButton(lastbutton, , , 1);
+	}
+
+	function onMouseEnter()
+	{
+		focus();
+	}
+
+	function onMouseLeave()
+	{
+		drawButton(lastbutton, , , 1);
+	}
+
+	function onMouseMove(x, y)
+	{
+		var no = getButtonNo(x, y);
+		if(no != lastbutton)
+		{
+			drawButton(no, , 1);
+			drawButton(lastbutton, , , 1);
+			lastbutton	= no;
+		}
+	}
+
+	function onMouseDown(x, y, button, shift)
+	{
+		if(button == mbRight)
+			parent.onMouseDown(...);
+		else if(button == mbLeft)
+		{
+			var no = lastbutton;
+			if(no>=0 && !(term[no][4] & 2))
+			{
+				drawButton(no, , 2);
+				parent.onDisplayInfo(no);
+				drawButton(onbutton, , , 2);
+				onbutton	= no;
+			}
+		}
+	}
+
+	function onMouseWheel()
+	{
+		bar.onMouseWheel(...);
+	}
+
+	function onKeyDown(key, shift)
+	{
+		var proceed	= true;
+
+		switch(key)
+		{
+		case VK_LEFT:
+			drawButton(lastbutton, , , 1);	//	Enter状態を解除
+			lastbutton--;	lastbutton	= term.count-1 if lastbutton<0;
+			drawButton(lastbutton, , 1);	//	左側の(一つ小さい)ボタンにEnter
+			scroll4button(lastbutton);
+			proceed	= false;
+			break;
+
+		case VK_RIGHT:
+			drawButton(lastbutton, , , 1);
+			lastbutton++;	lastbutton	= 0 if lastbutton>=term.count;
+			drawButton(lastbutton, , 1);	//	右側の(一つ大きい)ボタンにEnter
+			scroll4button(lastbutton);
+			proceed	= false;
+			break;
+
+		case VK_UP:
+			drawButton(lastbutton, , , 1);
+			lastbutton -= wpl;
+			if(lastbutton<0)
+				lastbutton	= (lastbutton + wpl) % wpl + (lpp - 2) * wpl;
+			while(lastbutton>=term.count) lastbutton -= wpl;
+			drawButton(lastbutton, , 1);
+			scroll4button(lastbutton);
+			proceed	= false;
+			break;
+
+		case VK_DOWN:
+			drawButton(lastbutton, , , 1);
+			lastbutton += wpl;
+			if(lastbutton>=term.count)
+				lastbutton	= (lastbutton - wpl) % wpl;
+			drawButton(lastbutton, , 1);
+			scroll4button(lastbutton);
+			proceed	= false;
+			break;
+
+		case VK_SPACE:
+		case VK_RETURN:
+			var no = lastbutton;
+			if(no>=0 && !(term[no][4] & 2))
+			{
+				drawButton(no, , 2);
+				parent.onDisplayInfo(no);
+				drawButton(onbutton, , , 2);
+				onbutton	= no;
+				scroll4button(no);
+			}
+			proceed	= false;
+			break;
+		}
+		super.onKeyDown(key, shift, proceed);
+	}
+
+	function onScroll()
+	{
+		//	バーの現在位置にあわせてボタンの位置を変更する
+		fillRect(clipLeft, clipTop+clipHeight-bh*2, clipWidth, bh*2, bgcolor);	//	消去
+		draw();	//	ボタンを描画
+	}
+}
+
+class TermInfoLayer extends FadeLayer
+{
+	var textcolor;
+	var shadowcolor;
+
+	var bar;
+
+	var linespacing;
+
+	var current;
+
+	var sept	= "、";
+
+	var wallimage	= "用語ウィンドウ_";
+	var bgcolor		= 0x487370A7;
+
+	function TermInfoLayer(win, par, l, t, w, h, textcolor, shadowcolor, fh=FontHeight, ls=2)
+	{
+		super.FadeLayer(...);
+		name	= "用語解説レイヤー";
+		setPos(l, t);
+		setSize(w, h);
+		setImageSize(w, h);
+		this.textcolor	= textcolor;
+		this.shadowcolor= shadowcolor;
+		visible			= true;
+		opacity			= 255;
+		font.height		= fh;
+		linespacing		= ls;
+
+		//	消去
+		drawWall();
+
+		//	スクロールバーの状態初期化
+		bar = new ScrollBarLayer(win, this, height, 6, 6);
+		bar.setPos(width-bar.width, 0);
+		bar.moving	= font.height;
+		bar.total	= imageHeight;
+		bar.area	= height;
+		bar.current	= imageTop = 0;
+		bar.onscroll= onScroll;	//	バーが動かされたときに呼び出される処理
+		bar.slider.onKeyDown = function(key, shift)
+			{
+				//	メニュー自体を閉じるキーか？
+				if(parent.parent.parent.checkCloseKey(...))
+					return;
+
+				if(key==VK_ESCAPE)// || key==VK_BACKSPACE)VK_BACKSPACEはない
+					parent.parent.lastfocused.focus();	//	フォーカスを返す
+				else
+					global.ScrollSliderLayer.onKeyDown(...);
+			} incontextof bar.slider;
+	}
+
+	function finalize()
+	{
+		invalidate bar;
+		super.finalize(...);
+	}
+
+	function changeInfo(term)
+	{
+		current	= term;
+
+		//	スクロールバーの状態初期化
+		var h = (term[2].count/* + (term[3]!=void ? 1 : 0)*/) * (font.height + linespacing);
+		h += clipTop + (height - clipHeight);
+		if(h<height)
+			h	= height;
+		bar.total	= h;
+		bar.area	= height;
+		bar.current	= 0;
+
+		draw();
+	}
+
+	function draw()
+	{
+		//	消去
+		fillRect(0, 0, width, height, bgcolor);
+
+		//	解説を描画
+		if(current==void)
+			return;
+		var cl = clipLeft;
+		var ct = clipTop;
+		var t = -bar.current;
+		var txt = current[2];
+		var fh = font.height + linespacing;
+		var h = clipHeight;
+		for(var i=0; i<txt.count; i++)
+		{
+			if(t + fh > 0 && t < h)
+			{
+				if(shadowcolor!==void)
+					drawText(cl, t+ct, txt[i], textcolor, 255, true, 512, shadowcolor, 1, 0, 0);
+				else
+					drawText(cl, t+ct, txt[i], textcolor, 255, true);
+			}
+			t += fh;
+		}
+	}
+
+	function drawWall()
+	{
+		var l = new global.Layer(window, this);
+
+		//	隅
+		var wi = wallimage;
+		var w = width, h = height;
+		l.loadImages(wi+"lt");
+		var ltw = l.width, lth = l.height;
+		copyRect(0, 0, l, 0, 0, ltw, lth);
+		l.loadImages(wi+"lb");
+		var lbh = l.height;
+		copyRect(0, h-lbh, l, 0, 0, l.width, lbh);
+
+		//	枠
+		l.loadImages(wi+"t");
+		var th = l.height;
+		stretchCopy(ltw, 0, w-ltw, th, l, 0, 0, l.width, th);
+		l.loadImages(wi+"l");
+		var lw = l.width;
+		stretchCopy(0, lth, lw, h-lth-lbh, l, 0, 0, lw, l.height);
+		l.loadImages(wi+"b");
+		var bh = l.height;
+		stretchCopy(ltw, h-l.height, w-ltw, l.height, l, 0, 0, l.width, l.height);
+
+		//	中身
+//		l.loadImages(wi+"c");
+//		stretchCopy(ltw, lw, w-ltw, h-th-bh, l, 0, 0, l.width, l.height);
+		fillRect(ltw, lw, w-ltw, h-th-bh, bgcolor);
+
+		//	クリッピング領域の設定
+		setClip(lw, th, w-lw, h-th-bh);
+
+		invalidate l;
+	}
+
+	function onMouseEnter()
+	{
+		bar.focus();
+	}
+
+	function onMouseDown()
+	{
+		parent.onMouseDown(...);
+	}
+
+	function onScroll()
+	{
+//		imageTop	= -bar.current;
+		draw();
+	}
+}
+
+/*-----------------------------------------------------------------------------
+/	End of File
+/----------------------------------------------------------------------------*/
+@endif

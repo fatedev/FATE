@@ -1,0 +1,1183 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) 1999-2002 TYPE-MOON All Rights Reserved.
+/		サブルーチン
+/----------------------------------------------------------------------------*/
+@if(__SUBROUTINE_DEFINED__==0)
+@set(__SUBROUTINE_DEFINED__=1)
+
+//	重力加速度(Pixel/ms^2)
+var AccelerationOfGravity = 9806.65 / 1000 / 1000 * 3;
+var AoG	= AccelerationOfGravity;
+
+//	空気密度
+var AirDensity	= 1.226;	//	1気圧,15℃:kg/m^3
+
+//	角度 -> ラジアン
+var Angle2Radian	= Math.PI / 180;
+var A2R	= Angle2Radian;
+
+//	レイヤーの前後位置
+var MostUpperForeAbsolute	= 100000;	//	一番手前の前景位置
+var MUFA	= MostUpperForeAbsolute;
+
+var Rules	= [
+	"カーテン左から",
+	"カーテン上から",
+	"シャッター下から",
+	"シャッター左から",
+	"シャッター上から"
+];
+
+//	最小更新間隔
+var minInterval	= 16;
+
+/*-----------------------------------------------------------------------------
+/	矩形の中に指定の座標が入っているか？
+/	in	: x, y	座標
+/		: ltx	矩形左上座標のx値もしくは、矩形オブジェクト(left,top,width,height)
+/		: lty	矩形左上座標のy値
+/		: rbx, rby	矩形右下座標
+/	out	: 加減速させた進行度
+/----------------------------------------------------------------------------*/
+function inRect(x, y, ltx, lty, rbx, rby)
+{
+//	dm(@"typeof ltx = ${typeof ltx}");
+	if(typeof ltx == "Object")
+	{
+		with(ltx)
+		{
+			return (((x - (.left+.width)) & (.left - x) & (y - (.top+.height)) & (.top - y)) < 0);
+		}
+	}
+	else if(typeof ltx == "Integer")
+	{
+//		dm(@"inrect: ${x-rbx}  ${ltx-x}  ${y-rby}  ${lty-y}");
+		return (((x - rbx) & (ltx - x) & (y - rby) & (lty - y)) < 0);
+	}
+	else
+		return false;
+}
+
+/*-----------------------------------------------------------------------------
+/	加速度をもった進行度の変化
+/	in	: per	進行度(0.0〜1.0)
+/		: accel	加速度(〜(-2:2)〜)
+/	out	: 加減速させた進行度
+/----------------------------------------------------------------------------*/
+function calcAccel(per, accel)
+{
+	if(accel < 0)
+	{
+		// 上弦 ( 最初が動きが早く、徐々に遅くなる )
+		per = 1.0 - per;
+		per = Math.pow(per, -accel);
+		per = 1.0 - per;
+	}
+	else if(accel > 0)
+	{
+		// 下弦 ( 最初は動きが遅く、徐々に早くなる )
+		per = Math.pow(per, accel);
+	}
+
+	return per;	//	加減速が行われた後の進行度
+}
+
+/*-----------------------------------------------------------------------------
+/	文字列比較
+/	in	: a, b	比較する文字列
+/	out	: [a>b] > 0 / [a==b] == 0 / [a<b] < 0
+/----------------------------------------------------------------------------*/
+function strcmp(a, b)
+{
+	if(a==b)
+		return 0;
+
+	var i=0;
+	while(1)
+	{
+		if(i>=b.length)	return -1;	//	bの方が長ければbが大きい(含む同文字列長)
+		if(i>=a.length)	return 1;	//	aの方が長ければaが大きい
+		if(#a[i]<#b[i])			return -1;	//	一文字ずつ比較
+		else if(#a[i]>#b[i])	return 1;
+		i++;
+	}
+}
+
+/*-----------------------------------------------------------------------------
+/	シェルソート
+/	in	: keys		シェルソートするArray
+/		: compare	比較関数(a<bのとき0より大きな整数を返す)
+/	out	: 
+/----------------------------------------------------------------------------*/
+function shellsort(keys, compare=void)
+{
+	if(keys.count<1)	return;
+	if(compare==void)
+		compare = function(a,b) { return a<b; };	//	単純比較の昇順
+
+	var SHELL	= 3;
+	var shell;
+	for(shell = 1; shell < keys.count; shell = shell * SHELL + 1);
+
+	while(shell > 0)
+	{
+		for(var i=shell; i<keys.count; i++)
+		{
+			var num = i;
+			var tmp = keys[num];
+			while((num >= shell) && compare(tmp, keys[num - shell])>0)
+			{
+				keys[num]	= keys[num - shell];
+				num -= shell;
+			}
+			keys[num] = tmp;
+		}
+		shell \= SHELL;
+	}
+}
+function descend(a, b)
+{
+	return a>b;	//	単純比較・降順
+}
+
+/*-----------------------------------------------------------------------------
+/	指定のオブジェクトを解放する
+/	in	: a	オブジェクト
+/	out	: 
+/----------------------------------------------------------------------------*/
+function release(a)
+{
+/*	if(typeof a != "Object")
+		throw new Exception("Object以外のものをinvalidateしようとしました。");
+	else*/
+	if(a != void && typeof a == "Object")
+		invalidate a;
+}
+
+/*-----------------------------------------------------------------------------
+/	微小物の放物運動
+/	in	: vx0, vy0	初速(画面座標系:pixel/ms^2)
+/		: t			時刻(ms)
+/		: a			断面積(mm^2)
+/		: cd		空気抵抗係数
+/	out	: [vx_t, vy_t, px, py]	指定時刻での速度と座標
+/----------------------------------------------------------------------------*/
+function getParabolaMotion(vx0, vy0, t, a=0.0, cd=0.0)
+{
+	if(a!=0.0 && cd!=0.0)
+		return getParabolaMotionWithAirResistance(...);
+
+	var vy_t	= vy0 + AoG * t;
+
+	var px	= vx0 * t;
+	var py	= vy0 * t + 0.5 * AoG * t * t;
+
+	return [vx0, vy_t, px, py];
+}
+
+function getParabolaMotionWithAirResistance(vx0, vy0, t, a, cd)
+{
+	var k	= 0.5 * cd * a * AirDensity;	//	抵抗係数
+
+	var E	= Math.exp(-k * t);
+	var C1_k= 1.0 / k;
+	var Cg_k= AoG * C1_k;
+
+	//	指定時刻での速度
+	var vx_t= vx0 * E;
+	var vy_t= Cg_k + (vx0 - Cg_k) * E;
+
+	//	指定時刻での位置
+	var px	= (vx0 / k) * (1.0 - E);
+	var py	= Cg_k * t + C1_k * (vy0 - Cg_k) * (1 - E);
+
+	return [vx_t, vy_t, px, py];
+}
+
+/*-----------------------------------------------------------------------------
+/	回転するアフィン行列
+/	in	: cx, cy	中心座標
+/		: rad		角度(ラジアン)
+/	out	: [[m00, m01], [m10, m11], [m20, m21]]	アフィン行列
+/----------------------------------------------------------------------------*/
+function getRotateAffine(cx, cy, rad)
+{
+	var sin	= Math.sin(rad);
+	var cos	= Math.cos(rad);
+	return [[cos, -sin], [sin, cos], [cx-cx*cos-cy*sin, cy+cx*sin-cy*cos]];
+}
+
+/*-----------------------------------------------------------------------------
+/	逆正接関数(2)
+/	in	: x, y	二辺
+/	out	: 角度(ラジアン:-PI〜PI)
+/----------------------------------------------------------------------------*/
+function atan2(x, y)
+{
+	if(x == 0.0)
+		x	= 0.0000000000000000000000000000000000000000000001;
+
+	var rad	= Math.atan(Math.abs(y/x));
+	if(y<=0)
+	{
+		if(x>=0)
+			return rad;	//	第一象限
+		else
+			return Math.PI - rad;	//	第二象限
+	}
+	else
+	{
+		if(x<0)
+			return Math.PI + rad;	//	第三象限
+		else
+			return Math.PI + Math.PI - rad;	//	第四象限
+	}
+}
+
+/*----------------------------------------------------------------------------/
+/	LinearMoverEx
+/----------------------------------------------------------------------------*/
+//	left, topを転用可能なMover
+class LinearMoverEx extends LinearMover
+{
+	function LinearMoverEx()
+	{
+		super.LinearMover(...);
+	}
+
+	function stopMove()
+	{
+		// 移動を終わる
+		if(moving)
+		{
+			// 最終位置に移動
+			if(layer isvalid)
+			{
+				var idx = int(pointCount*3);
+				var p = path;
+//				layer.setPos(p[idx], p[idx+1]);
+				updateData(p[idx], p[idx+1]);
+				layer.opacity = p[idx+2];
+			}
+			System.removeContinuousHandler(handler);
+			moving = false;
+			finalFunction();
+		}
+	}
+
+	function handler(tick)
+	{
+		// 移動中に呼ばれる
+		if(nextStop || !(layer isvalid)) { stopMove();  return; }
+		if(first) startTick = tick, first = false;
+		tick -= startTick;
+		if(tick >= totalTime)
+		{
+			nextStop = true;
+			var idx = int(pointCount*3);
+			var p = path;
+//			layer.setPos(p[idx], p[idx+1]);
+			updateData(p[idx], p[idx+1]);
+			layer.opacity = p[idx+2];
+			return;
+		}
+
+		if(accel < 0)
+		{
+			// 上弦 ( 最初が動きが早く、徐々に遅くなる )
+			tick = 1.0 - tick / totalTime;
+			tick = Math.pow(tick, -accel);
+			tick = int ( (1.0 - tick) * totalTime );
+		}
+		else if(accel > 0)
+		{
+			// 下弦 ( 最初は動きが遅く、徐々に早くなる )
+			tick = tick / totalTime;
+			tick = Math.pow(tick, accel);
+			tick = int ( tick * totalTime );
+		}
+
+		move(tick);
+	}
+
+	function move(tick)
+	{
+		var index = tick \ time * 3;
+		var ratio = tick % time / time;
+		var p = path;
+		var sx = p[index];
+		var sy = p[index+1];
+		var so = p[index+2];
+		var ex = p[index+3];
+		var ey = p[index+4];
+		var eo = p[index+5];
+
+		var l = int((ex-sx)*ratio + sx);
+		var t = int((ey-sy)*ratio + sy);
+		var o = eo >= 256 ? so : int((eo-so)*ratio + so);
+
+//		layer.setPos(l, t);
+		updateData(l, t);
+		layer.opacity = o;
+	}
+
+	function updateData(a, b)
+	{
+		//	実際に、レイヤーに値を設定する。
+		//	※	ここをOverrideすれば他の値を変化させることも可能
+		layer.setPos(a, b);
+	}
+}
+
+/*----------------------------------------------------------------------------/
+/	LinearMoverImgPosY
+/----------------------------------------------------------------------------*/
+//	imageTop, opacity が移動可能なMover
+class LinearMoverImgPosY extends LinearMoverEx
+{
+	function LinearMoverImgPosY()
+	{
+		super.LinearMoverEx(...);
+	}
+
+	function updateData(a, b)
+	{
+		//	a(一番目の要素)は無視する
+		layer.imageTop = b;
+	}
+}
+
+/*-----------------------------------------------------------------------------
+/	ビット演算のNOT
+/	in	: 
+/	out	: 
+/----------------------------------------------------------------------------*/
+function NOT(value)
+{
+	return 0xFFFFFFFF ^ value;
+}
+
+/*-----------------------------------------------------------------------------
+/	小さいほうの添え字を返す二分探索
+/	in	: x	探す値
+/		: a	配列
+/	out	: 添え字
+/----------------------------------------------------------------------------*/
+function binarysearch_min(x, a)
+{
+	var left	= 0;
+	var right	= a.count;
+	var mid;
+
+	while(left<right)
+	{
+		mid	= (left+right) >> 1;
+		if(a[mid] <= x)
+			left	= mid + 1;
+		else
+			right	= mid;
+	}
+	return left-1;
+}
+
+/*-----------------------------------------------------------------------------
+/	大きいほうの添え字を返す二分探索
+/	in	: x	探す値
+/		: a	配列
+/	out	: 添え字
+/----------------------------------------------------------------------------*/
+function binarysearch_max(x, a)
+{
+	var left	= 0;
+	var right	= a.count;
+	var mid;
+
+	while(left<right)
+	{
+		mid	= (left+right) >> 1;
+		if(a[mid] < x)
+			left	= mid + 1;
+		else
+			right	= mid;
+	}
+	return left;
+}
+
+/*-----------------------------------------------------------------------------
+/	
+/	in	: 
+/	out	: 
+/----------------------------------------------------------------------------*/
+
+/*-----------------------------------------------------------------------------
+/	
+/	in	: 
+/	out	: 
+/----------------------------------------------------------------------------*/
+
+
+//-	音関係 --------------------------------------------------------------------
+var lastPlaying = [];	//	再生中であったBGMの履歴
+var lastLooping = [];	//	BGMがループ再生であったか？
+var BGMFadeTime	= 800;	//	デフォルトのフェード時間
+var BGMOverlap	= 800;	//	デフォルトのオーバーラップ時間
+/*-----------------------------------------------------------------------------
+/	BGM再生
+/	in	: file		再生ファイル
+/		: fadetime	フェード時間
+/		: looping	ループするか
+/	out	: 
+/----------------------------------------------------------------------------*/
+function playBGM(file, time=BGMFadeTime, overlap=BGMOverlap, looping=true)
+{
+	if(file!="")
+	{
+		with(kag.bgm)
+		{
+			if(.currentBuffer.status=="play")
+			{
+				dm("BGM: "+.playingStorage+" -> "+file);
+				.exchange(%[storage:file, loop:looping, time:time, overlap:overlap]);
+			}
+			else
+			{
+				if(time>0)
+					.fadeIn(%[storage:file, loop:looping, time:time]);
+				else
+					.play(%[storage:file, loop:looping]);
+				dm("BGM: "+file);
+			}
+//			dm("current / playing = "+.currentStorage+" / "+.playingStorage);
+		}
+	}
+}
+
+/*-----------------------------------------------------------------------------
+/	BGMの再生状態を取得する
+/	in	: 
+/	out	: 状態
+/----------------------------------------------------------------------------*/
+function getBGMStatus()
+{
+	return kag.bgm.currentBuffer.status;
+}
+
+/*-----------------------------------------------------------------------------
+/	BGM切り替え
+/	in	: file		再生ファイル
+/		: fadetime	フェード時間
+/		: overlap	オーバーラップ時間
+/		: looping	ループするか
+/	out	: 
+/----------------------------------------------------------------------------*/
+function changeBGM(file, time=BGMFadeTime, overlap=BGMOverlap, looping=true)
+{
+	if(file=="")
+		return;
+
+	var bgm = kag.bgm;
+	var lf = bgm.playingStorage;
+	if(lf!=file)
+	{
+		memorizeCurrentBGM();
+		bgm.exchange(%[storage:file, loop:looping, time:time, overlap:overlap]);
+		dm("BGM: "+lf+" -> "+file);
+	}
+}
+
+/*-----------------------------------------------------------------------------
+/	再生中のBGMを記憶する
+/	in	: 
+/	out	: 
+/----------------------------------------------------------------------------*/
+function memorizeCurrentBGM()
+{
+	var bgm = kag.bgm;
+	if(bgm.playingStorage!="")
+	{
+		lastPlaying.add(bgm.playingStorage);
+		lastLooping.add(bgm.looping);
+	}
+}
+
+/*-----------------------------------------------------------------------------
+/	BGM修復
+/	in	: fadetime	フェード時間
+/		: overlap	オーバーラップ時間
+/	out	: 
+/----------------------------------------------------------------------------*/
+function restoreBGM(time=BGMFadeTime, overlap=BGMOverlap)
+{
+	var bgm = kag.bgm;
+	if(lastPlaying.count>0)
+	{
+		var no = lastPlaying.count-1;
+		var lf = lastPlaying[no];
+		var lp = lastLooping[no];
+		if(lf!="")
+		{
+			bgm.exchange(%[storage:lf, loop:lp, time:time, overlap:overlap]) if lf!=bgm.playingStorage;
+			dm("BGM: "+bgm.playingStorage+" -> "+lf);
+		}
+
+		lastPlaying.erase(no);
+		lastLooping.erase(no);
+	}
+	else
+	{
+		stopBGM(...);
+	}
+}
+
+/*-----------------------------------------------------------------------------
+/	BGM停止
+/	in	: fadetime	フェード時間
+/		: overlap	オーバーラップ時間
+/	out	: 
+/----------------------------------------------------------------------------*/
+function stopBGM(time=BGMFadeTime, overlap=BGMOverlap)
+{
+	var bgm	= kag.bgm;
+	if(bgm.playingStorage!="")
+	{
+		bgm.stopFade();
+		if(time>0)
+			bgm.fadeOut(%[time:time]);
+		else
+			bgm.stop();
+		dm("BGM: "+bgm.playingStorage+" -> stop");
+		bgm.playingStorage	= "";//	playingStorageを再生中かのキーに使っている
+								//	ので、フェードが終わるよりも先に無効にして
+								//	いる
+	}
+}
+
+/*-----------------------------------------------------------------------------
+/	効果音バッファの選択
+/	in	: file	再生を行う効果音ファイル名
+/		: loop	ループ再生を行うか？
+/	out	: 
+/----------------------------------------------------------------------------*/
+function selectSoundBuffer(file, loop=false)
+{
+	var cur = f.current_SEbuffer;
+	var i;
+	var	ses	= kag.se;
+	for(i=ses.count-1; i>0; i--)
+	{
+		cur++;
+		cur = 0 if cur>=ses.count;
+		dm("kag.se["+cur+"].playingStorage: "+ses[cur].playingStorage);
+		if(ses[cur].playingStorage=="")
+			break;
+	}
+	if(i==0)
+		dm("効果音再生バッファの数が不足しています！");
+	f.bufno	= f.current_SEbuffer= cur;
+}
+
+/*-----------------------------------------------------------------------------
+/	効果音の再生
+/	in	: file	再生するファイル
+/		: nowait	フェードアウト終了を待たない(Def:true)
+/	out	: 
+/----------------------------------------------------------------------------*/
+function playSound(file, nowait=true)
+{
+	if(file=="")	return;		//	ファイルが指定されてないと再生できない
+	if(nowait=="")	nowait	= true;
+	selectSoundBuffer(file, false);
+	var win = kag;
+	win.se[f.bufno].play(%[storage:file]);
+	if(nowait!=true)
+		win.waitSEStop(%[buf:f.bufno]);
+}
+
+/*-----------------------------------------------------------------------------
+/	効果音のループ再生
+/	in	: file	再生するファイル
+/		: time	フェードイン時間(Def:0)
+/		: nowait	フェードイン終了を待たない(Def:true)
+/	out	: 
+/----------------------------------------------------------------------------*/
+function loopSound(file, time=0, nowait=true)
+{
+	if(file=="")	return;		//	ファイルが指定されてないと再生できない
+	if(nowait=="")	nowait	= true;
+	selectSoundBuffer(file, true);
+	var win = kag;
+	if(+time<1)
+		win.se[f.bufno].play(%[storage:file,loop:true]);	//	フェードインなしで再生開始
+	else
+	{
+		win.se[f.bufno].fadeIn(%[storage:file,time:time,loop:true]);
+		if(nowait!=true)
+			win.waitSEStop(%[buf:f.bufno,time:time,canskip:false,mode:"normal"]);
+	}
+}
+
+/*-----------------------------------------------------------------------------
+/	ループ効果音の停止
+/	in	: file	停止する効果音ファイル名
+/		: time	フェード時間(指定が無ければフェードしない)
+/		: nowait	フェードの終了を待つか？(Def:false)
+/	out	: 
+/----------------------------------------------------------------------------*/
+function stopSound(file="", time=0, nowait=false)
+{
+	var bufno = -1;
+	var	ses	= kag.se;
+	var num = ses.count;
+
+	//	ファイル名が指定されているなら、対応するバッファ番号を調べる
+	if(file!="")
+	{
+		for(var i=num-1; i>=0; i--)
+		{
+			//	指定のファイルが再生されている時
+			if(ses[i].playingStorage==file)
+				bufno = i;
+			dm("sound buffer["+i+"] = "+ses[i].playingStorage);
+		}
+		if(bufno<0)
+		{
+			dm("指定の効果音("+file+")は既に再生を終了したか、再生されていませんでした。");
+			return;
+		}
+	}
+	dm("\""+file+"\"の効果音再生中のバッファ: "+bufno);
+
+	var win	= kag;
+	if(bufno>=0)
+	{
+		//	バッファを指定して停止する
+		if(bufno<num)
+		{
+			if(time>0)
+			{
+				win.se[bufno].fadeOut(%[time:time]);
+				if(!nowait)
+					win.doWait(%[time:time,canskip:false,mode:"normal"]);
+			}
+			else
+				win.se[bufno].stop();
+		}
+	}
+	else
+	{
+		//	すべて停止する
+		var se = win.se;
+		if(time>0)
+		{
+			for(var i=num-1; i>=0; i--)
+			{
+				se[i].fadeOut(%[time:time]);
+				ses[i].playingStorage	= "";
+			}
+			if(!nowait)
+				win.doWait(%[time:time,canskip:false,mode:"normal"]);
+		}
+		else
+		{
+			for(var i=num-1; i>=0; i--)
+			{
+				se[i].stop();
+			}
+		}
+	}
+}
+
+/*-----------------------------------------------------------------------------
+/	サウンドバッファの状態を取得
+/	in	: bufno	バッファ番号
+/	out	: 
+/----------------------------------------------------------------------------*/
+function getSEStatus(bufno=-1)
+{
+	var secnt	= kag.numSEBuffers;
+	var se		= kag.se;
+	if(bufno<0 || bufno>=secnt)
+	{
+		for(var i=0; i<secnt; i++)
+		{
+			if(se[i].status == "play")
+				return "play";	//	いずれか一つでも再生中なら全体は再生中
+		}
+		return "stop";
+	}
+	else
+		return se[bufno].status;
+}
+
+/*-----------------------------------------------------------------------------
+/	表示画面の重ね合わせ
+/	in	: page	重ね合わせるページ(default:fore)
+/		: leave	重ね合わせたレイヤーを残しておくか
+/	out	: 重ねあわしたレイヤー(leave=true)
+/----------------------------------------------------------------------------*/
+function mergeScreen(page="fore", leave=false)
+{
+	var win = kag;
+	if(win[page]==void)
+		return false;
+	var pri = win[page].base;
+	var layer = new global.Layer(win, pri);
+	var w = pri.imageWidth, h = pri.imageHeight;
+	layer.setSize(w, h);
+	layer.piledCopy(0, 0, pri, 0, 0, w, h);
+
+	//	背景へコピー
+	pri.copyRect(0, 0, layer, 0, 0, w, h);
+
+	//	前景はすべて非表示
+	var layers = win[page].layers;
+	for(var i=win.numCharacterLayers-1; i>=0; i--) layers[i].visible = false;
+
+	if(leave)
+		return layer;
+
+	invalidate layer;
+	return true;
+}
+
+/*-----------------------------------------------------------------------------
+/	アフィン変換描画を簡単に行うためのクラス
+/----------------------------------------------------------------------------*/
+class easyAffineTransform
+{
+	var matrix;
+
+	//	行列の初期化
+	function initProgrammableTransformation()
+	{
+		matrix	= void;
+	}
+
+	//	移動させる
+	function addTransferMatrix(x, y)
+	{
+		if(matrix===void)
+		{
+			//	そのまま入れる
+			matrix	= [
+				1, 0, 0,
+				0, 1, 0,
+				x, y, 1
+			];
+		}
+		else
+		{
+			//	掛け合わせる
+			matrix[6]	+= x;
+			matrix[7]	+= y;
+		}
+	}
+
+	//	回転させる
+	function addRotateMatrix(theta)
+	{
+		var cs	= Math.cos(theta);
+		var sn	= Math.sin(theta);
+		if(matrix===void)
+		{
+			//	そのまま入れる
+			matrix	= [
+				cs, -sn, 0,
+				sn,  cs, 0,
+				 0,   0, 1
+			];
+		}
+		else
+		{
+			//	掛ける
+			var	matrix_0_	= matrix[0];
+			var	matrix_3_	= matrix[3];
+			var	matrix_6_	= matrix[6];
+			matrix[0]	=  matrix[0] * cs + matrix[1] * sn;	//	2重に回転させなければ、
+			matrix[1]	= -matrix_0_ * sn + matrix[1] * cs;	//	二つ目の掛け算は不要
+			matrix[3]	=  matrix[3] * cs + matrix[4] * sn;	//					不要
+			matrix[4]	= -matrix_3_ * sn + matrix[4] * cs;	//					不要
+			matrix[6]	=  matrix[6] * cs + matrix[7] * sn;	//	ココは移動で関係するので
+			matrix[7]	= -matrix_6_ * sn + matrix[7] * cs;	//	必要
+		}
+	}
+
+	//	拡縮させる
+	function addMagnifyMatrix(sx, sy)
+	{
+		if(matrix===void)
+		{
+			//	そのまま入れる
+			matrix	= [
+				sx,  0, 0,
+				 0, sy, 0,
+				 0,  0, 1
+			];
+		}
+		else
+		{
+			//	掛ける
+			matrix[0]	*= sx;
+			matrix[1]	*= sy;
+			matrix[3]	*= sx;
+			matrix[4]	*= sy;
+			matrix[6]	*= sx;
+			matrix[7]	*= sy;
+		}
+	}
+
+	//	左右反転させる
+	function addMirrorLRMatrix()
+	{
+		if(matrix===void)
+		{
+			matrix	= [
+				-1, 0, 0,
+				 0, 1, 0,
+				 0, 0, 1
+				];
+		}
+		else
+		{
+			matrix[0]	*= -1;
+		}
+	}
+
+	//	上下反転させる
+	function addMirrorUDMatrix()
+	{
+		if(matrix===void)
+		{
+			matrix	= [
+				1,  0, 0,
+				0, -1, 0,
+				0,  0, 1
+				];
+		}
+		else
+		{
+			matrix[4]	*= -1;
+		}
+	}
+
+	//	実際にコピー
+	function transformByProgram(dest, src, sleft, stop, swidth, sheight, mode=stNearest)
+	{
+		if(matrix!=void)
+		{
+			with(dest)
+			{
+				var lastface= .face;
+				.face	= dfBoth;	//	描画できるのはdfBothのみ
+				.affineCopy(src, sleft, stop, swidth, sheight, true,
+					matrix[0], matrix[1], matrix[3], matrix[4], matrix[6], matrix[7], mode);
+				.face	= lastface;	//	元に戻す
+			}
+		}
+	}
+
+	//	アフィン行列のクリア
+	function clear()
+	{
+		matrix	= void;
+	}
+
+	//	アフィン行列と座標の積
+	function calc(x, y)
+	{
+		var m = matrix;
+		return [ m[0]*x + m[3]*y + m[6], m[1]*x + m[4]*y + m[7] ];
+	}
+}
+
+/*-----------------------------------------------------------------------------
+/	全体の状態の設定
+/	in	: mode	system=システムメニュー時 / scenario=シナリオ表示時
+/	out	: 
+/----------------------------------------------------------------------------*/
+function setSystemMode(mode="system")
+{
+	var win = kag;
+	switch(mode)
+	{
+	case "system":
+		win.cancelSkip();		//	スキップ停止
+		win.cancelAutoMode();	//	オートモード停止
+		win.setRightClickOptions(%[call:false]);//	右クリック無効
+		win.historyEnabled		= false;		//	テキスト履歴は無効
+		.shortcut_object.enabled= false;		//	ショートカットキーは無効
+		break;
+
+	case "scenario":
+		if(win.historyWriteEnabled)
+			win.historyLayer.repage();	//	テキスト履歴の改ページを送る
+		win.clearMessageLayers(true);	//	全てのメッセージレイヤーを消去
+		win.setRightClickOptions(%[call:true]);	//	右クリックを有効にする
+		win.historyEnabled	= true;		//	テキスト履歴を有効に
+		.shortcut_object.enabled= true;		//	ショートカットキーを有効に
+		break;
+	}
+}
+
+/*-----------------------------------------------------------------------------
+/	線形補間クラス
+/	in	: path	各点の情報が入った配列
+/		: step	一つの点がいくつの要素で構成されているか/いくつ単位で移動すればよいか
+/	out	: 
+/----------------------------------------------------------------------------*/
+class LinearInterpolater
+{
+	var path, step;
+
+	function LinearInterpolater(path, step)
+	{
+		//	保存
+		this.step	= step;
+		this.path	= path;
+	}
+
+	function calc(per, valueno)
+	{
+		var path	= this.path;
+		var index, ratio;
+		if(typeof per != "Object")
+		{
+			var	d	= ((path.count - step) \ step) * per;	//	進行度
+			index	= int(d);		//	現在利用中の点
+			ratio	= d - index;	//	点間の比率
+		}
+		else
+		{
+			index	= per[0];
+			ratio	= per[1];
+		}
+		var ptindex	= index * step;	//	現在利用中の点データの開始位置
+		ptindex		+= valueno;		//	計算対象の要素
+
+		return (path[ptindex+step] - path[ptindex]) * ratio + path[ptindex];
+	}
+
+	function getPointAndRatio(per)
+	{
+		var	d		= ((path.count - step) \ step) * per;	//	進行度
+		var	index	= int(d);		//	現在利用中の点
+		var	ratio	= d - index;	//	点間の比率
+
+		return [ index, ratio ];
+	}
+}
+
+/*-----------------------------------------------------------------------------
+/	スプラインクラス
+/	in	: path	各点の情報が入った配列
+/		: step	一つの点がいくつの要素で構成されているか/いくつ単位で移動すればよいか
+/	out	: 
+/	memo: 要素0がX座標、要素1がY座標であることが前提となっている
+/----------------------------------------------------------------------------*/
+class Spline extends LinearInterpolater
+{
+	var pt, wx, wy;
+
+	function Spline(path, step)
+	{
+		//	保存
+		this.step	= step;
+		this.path	= path;
+
+		//	事前の計算
+		var points = path.count \ step;
+		var zx = wx = [], zy = wy = [];
+
+		var p = pt = [ 0 ];
+		for(var i=step, pi=1; i < path.count; i+=step, pi++)
+		{
+			var t1 = path[i]	- path[i-step];
+			var t2 = path[i+1]	- path[i-step+1];
+			p[pi] = p[pi-1] + Math.sqrt(t1*t1 + t2*t2);
+		}
+		for(var i=1; i<points; i++)
+			p[i] /= p[points - 1];
+
+		var hx = [], hy = [];
+		var dx = [], dy = [];
+		zx[0] = zy[0] = 0;
+		zx[points - 1] = zy[points - 1] = 0;
+		for(var i=0, pi=0; i<points - 1; i++, pi+=step)
+		{
+			hx[i] = hy[i] = p[i+1] - p[i];
+			dx[i+1] = (path[pi+step  ] - path[pi  ]) / hx[i];
+			dy[i+1] = (path[pi+step+1] - path[pi+1]) / hy[i];
+		}
+		zx[1] = dx[2] - dx[1] - hx[0] * zx[0];
+		zy[1] = dy[2] - dy[1] - hy[0] * zy[0];
+		dx[1] = dy[1] = 2 * (p[2] - p[0]);
+		for(var i=1; i<points-2; i++)
+		{
+			var t = hx[i] / dx[i];
+			zx[i + 1] = dx[i + 2] - dx[i + 1] - zx[i] * t;
+			dx[i + 1] = 2 * (p[i + 2] - p[i]) - hx[i] * t;
+			t = hy[i] / dy[i];
+			zy[i + 1] = dy[i + 2] - dy[i + 1] - zy[i] * t;
+			dy[i + 1] = 2 * (p[i + 2] - p[i]) - hy[i] * t;
+		}
+		zx[points-2] -= hx[points-2] * zx[points-1];
+		zy[points-2] -= hy[points-2] * zy[points-1];
+		for(var i=points-2; i>0; i--)
+		{
+			zx[i] = (zx[i] - hx[i] * zx[i + 1]) / dx[i];
+			zy[i] = (zy[i] - hy[i] * zx[i + 1]) / dy[i];
+		}
+	}
+
+	function calcSpline(per, z, first)
+	{
+		var p		= this.pt;
+		var pt		= path;
+		var points	= pt.count \ step;
+		var i = 0, j = points - 1;
+		while(i < j)
+		{
+			var k = (i + j) \ 2;
+			if(p[k] < per)	i = k + 1;
+			else				j = k;
+		}
+
+		if(i>0) i--;
+		var h = p[i + 1] - p[i];
+		var d = per - p[i];
+		var ind = i*step+first;
+		return (((z[i + 1] - z[i]) * d / h + z[i] * 3) * d
+			+ ((pt[ind+step] - pt[ind]) / h
+			- (z[i] * 2 + z[i + 1]) * h)) * d + pt[ind];
+	}
+
+	function calc(per, valueno)
+	{
+		//	0(x座標)と1(y座標)のみスプライン補間する
+		if(valueno<1)
+			return calcSpline(per, wx, 0);
+		else if(valueno<2)
+			return calcSpline(per, wy, 1);
+		else
+			return super.calc(per, valueno);	//	以外は線形補間
+	}
+
+	function getX(per)
+	{
+		return calcSpline(per, wx, 0);
+	}
+
+	function getY(per)
+	{
+		return calcSpline(per, wy, 1);
+	}
+}
+
+/*-----------------------------------------------------------------------------
+/	指定の幅に合わせて文を分割する
+/	in	: line	分割する文
+/		: width	幅
+/		: fgtw	文の実際の幅を返すクロージャ
+/----------------------------------------------------------------------------*/
+function	divideAccordingToWidth(line, width, fgtw)
+{
+	var	lines	= [];
+	while(fgtw(line)>width)
+	{
+		var	len		= line.length;
+		var	pos		= len>>1;
+		var	max = len, min = 0;
+		do
+		{
+			if(fgtw(line.substr(0, pos))>width)
+			{
+				max	= pos;
+				pos	-= (pos - min)>>1;
+			}
+			else
+			{
+				min	= pos;
+				pos	+= (max - pos)>>1;
+			}
+		}
+		while(max-min>1);
+		lines.add(line.substr(0, min));
+		line	= line.substr(min);
+	}
+	lines.add(line);
+
+	return lines;
+}
+
+/*-----------------------------------------------------------------------------
+/	縁取りありの長方形を描画する
+/	in	: layer	描画先
+/		: l, t	左上
+/		: w, h	幅、高さ
+/		: ic	内部の色
+/		: lw	縁取りの幅
+/		: lc	縁取りの色
+/	out	: 
+/----------------------------------------------------------------------------*/
+function drawEdgeRect(layer, l, t, w, h, ic=0xFFFFFFFF, lw=1, lc=0xFF000000)
+{
+	layer.fillRect(l+lw, t+lw, w-(lw<<1), h-(lw<<1), ic);
+	drawEdge(layer, l, t, w, h, lw, lc);
+}
+
+/*-----------------------------------------------------------------------------
+/	縁を描画する
+/	in	: layer	描画先
+/		: l, t	左上
+/		: w, h	幅、高さ
+/		: lw	縁取りの幅
+/		: lc	縁取りの色
+/	out	: 
+/----------------------------------------------------------------------------*/
+function drawEdge(layer, l, t, w, h, lw=1, lc=0xFF000000)
+{
+	with(layer)
+	{
+		.fillRect(l, t, w, lw, lc);
+		.fillRect(l, t+lw, lw, h-lw, lc);
+		.fillRect(l+w-lw, t+lw, lw, h-lw, lc);
+		.fillRect(l+lw, t+h-lw, w-(lw<<1), lw, lc);
+	}
+}
+
+/*-----------------------------------------------------------------------------
+/	四隅に"「"のある長方形を描画する
+/	in	: layer	描画先
+/		: l, t	左上
+/		: w, h	幅、高さ
+/		: ic	内部の色
+/		: edge	"「"の幅
+/		: spc	"「"と長方形の間の隙間
+/		: ec	"「"の色
+/	out	: 
+/----------------------------------------------------------------------------*/
+function drawCursorRect(layer, l, t, w, h, ic=0xFFFFFFFF, edge=2, spc=1, ec=0xFF000000)
+{
+	var	out	= edge+spc;
+	var	out2= out<<1;
+	with(layer)
+	{
+		.fillRect(l, t, w, h, ic);
+		.fillRect(l, t, out2, edge, ec);
+		.fillRect(l, t+edge, edge, out2-edge, ec);
+		.fillRect(l+w-out2, t, out2, edge, ec);
+		.fillRect(l+w-edge, t+edge, edge, out2-edge, ec);
+		.fillRect(l, t+h-out2, edge, out2-edge, ec);
+		.fillRect(l, t+h-edge, out2, edge, ec);
+		.fillRect(l+w-edge, t+h-out2, edge, out2-edge, ec);
+		.fillRect(l+w-out2, t+h-edge, out2, edge, ec);
+	}
+}
+
+/*-----------------------------------------------------------------------------
+/	
+/	in	: 
+/	out	: 
+/----------------------------------------------------------------------------*/
+
+@endif

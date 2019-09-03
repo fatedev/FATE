@@ -1,0 +1,57 @@
+@if(__IMAGELIST_DEFINED__==0)
+@set(__IMAGELIST_DEFINED__=1)
+/*----------------------------------------------------------------------------/
+/	アイコンなど小サイズ画像のリスト
+/----------------------------------------------------------------------------*/
+
+class ImageList
+{
+	var img = [];
+	var imgname = %[];
+	var id2name = [];
+	var _window;
+	var _parent;
+
+	function ImageList(win, par)
+	{
+		_window	= win;
+		_parent	= par;
+	}
+
+	function finalize()
+	{
+		invalidate imgname;
+		invalidate img;
+	}
+
+	function addImage(storage, imagename ="", colorkey=clAdapt)
+	{
+		var iid= img.count;
+		var i	= img[iid]	= new global.Layer(_window, _parent);
+		i.loadImages(storage, colorkey);
+		i.setSizeToImageSize();
+		if(imagename=="")
+			imagename	= storage;
+		imgname[imagename]	= iid;
+		id2name[iid]	= imagename;
+
+		return iid;
+	}
+
+	function getImage(imagename)
+	{
+		if(typeof imagename == "Integer")
+		{
+			if(imagename>=0 && imagename<img.count)
+				return img[imagename];
+			else
+				return void;
+		}
+		else if(imagename != "" && imgname[imagename]>=0 && imgname[imagename]<img.count)
+			return img[imgname];
+		else
+			return void;
+	}
+}
+
+@endif

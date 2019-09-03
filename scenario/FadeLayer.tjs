@@ -1,0 +1,279 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) 1999-2002 TYPE-MOON All Rights Reserved.
+/	フェードするレイヤー
+/----------------------------------------------------------------------------*/
+@if(__FADELAYER_DEFINED__==0)
+@set(__FADELAYER_DEFINED__=1)
+
+var modestack = [];	//	モーダル状態に移行したレイヤーを記録するスタック
+
+Scripts.execStorage("subroutine.tjs");
+
+class FadeLayer extends KAGLayer
+{
+	var nextfunc;		//	フェード後に実行されるメソッド
+	var updatefunc;		//	更新時に実行されるメソッド
+
+	var delayTimer;
+
+	var focusitem;		//	時間差でフォーカスを向けるレイヤー
+
+	//	外部から、このオブジェクトが解放されたときに実行される処理を登録する
+	var finalizer = [];
+
+	var startopacity, endopacity;
+	var startleft, endleft;
+	var starttop, endtop;
+
+	var construct;
+
+	var starttick, lasttick;
+	var doing;
+	var time, lasttime = 300;
+	var accel, lastaccel = 0;
+
+	var minInterval	= 48;
+
+	function FadeLayer(win, par)
+	{
+		super.KAGLayer(...);
+		opacity	= 0;
+	}
+
+	function finalize()
+	{
+		dm("end of "+name) if name!="";
+		stop();
+		//	外部で定義された終了処理関数を実行する
+		for(var i=0; i<finalizer.count; i++)
+			finalizer[i][0](finalizer[i][1], finalizer[i][2]);
+		release(delayTimer);
+		super.finalize(...);
+	}
+
+	//	このオブジェクトが解放されるときに実行される処理の追加
+	function addFinalizer(func, arg1, arg2)
+	{
+		finalizer.add([func, arg1, arg2]);
+	}
+
+	//	フェードによる表示/消去
+	function show(time, accel, func, delay, updatefunc)
+	{
+		fade(255, time, accel, func, delay, updatefunc);
+	}
+
+	function hide(time, accel, func, delay, updatefunc)
+	{
+		fade(0, time, accel, func, delay, updatefunc);
+	}
+
+	//	移動
+	function move(l, t, opacity=void, time, accel, func=void, delay=0, updatefunc=void)
+	{
+		finish();
+
+		if(!(this isvalid))
+		{
+//			throw new Exception("無効になっているオブジェクトを操作しようとしました。");
+			//	例外を投げようとすると更に例外を呼んでいた…
+			return;
+		}
+		startleft	= left;	endleft	= l;
+		starttop	= top;	endtop	= t;
+		startopacity= this.opacity;	endopacity	= opacity!==void ? +opacity : startopacity;
+		this.time	= lasttime	= time;
+		this.accel	= lastaccel	= accel;
+		nextfunc	= func if func!=void;
+		this.updatefunc	= updatefunc;
+
+		construct	= moving;
+		doing		= true;
+		visible		= true;
+		if(time<1 && delay==0)
+			finish();
+		else
+		{
+			starttick	= System.getTickCount() + delay;
+			System.addContinuousHandler(handler);
+		}
+	}
+
+	//	ゲームメニューレイヤーのフェード(不透明度のみ)
+	function fade(opacity, time=lasttime, accel=lastaccel, func=void, delay=0, updatefunc=void)
+	{
+		finish();
+
+		if(!this isvalid)
+		{
+//			throw new Exception("無効になっているオブジェクトを操作しようとしました。");
+			return;
+		}
+		startopacity= this.opacity;	endopacity	= opacity;
+		this.time	= lasttime	= time;
+		this.accel	= lastaccel	= accel;
+		nextfunc	= func if func!=void;
+		this.updatefunc	= updatefunc;
+//		dm(name+": func = "+func+" / nextfunc = "+nextfunc+" / );
+
+		construct	= fading;
+		doing		= true;
+		visible		= true;
+		if(time<1 && delay==0)
+			finish();
+		else
+		{
+//			dm("fade start: "+name+", "+time+"("+startopacity+" -> "+endopacity+")");
+			starttick	= System.getTickCount() + delay;
+			System.addContinuousHandler(handler);
+		}
+	}
+
+	//	opacityのみ変化
+	function fading(per)
+	{
+		if(per<1.0)
+			opacity	= startopacity + int((endopacity - startopacity) * per);
+		else
+			opacity	= endopacity;
+		if(updatefunc!=void)
+			updatefunc();
+	}
+
+	//	left, topも変化
+	function moving(per)
+	{
+		if(per<1.0)
+		{
+			opacity	= startopacity + int((endopacity - startopacity) * per);
+			left	= startleft + int((endleft - startleft) * per + 0.5);
+			top		= starttop + int((endtop - starttop) * per + 0.5);
+		}
+		else
+		{
+			opacity	= endopacity;
+			left	= endleft;
+			top		= endtop;
+		}
+		if(updatefunc!=void)
+			updatefunc();
+	}
+
+	//	暇な時処理セット
+	function handler(tick)
+	{
+		if(tick < lasttick + (.minInterval>minInterval ? .minInterval : minInterval))	return;
+		else	lasttick = tick;
+
+		var past = tick - starttick;
+		if(past>=0)
+		{
+			if(past<=time)
+				construct(calcAccel(past/time, accel));
+			else
+				finish();
+		}
+	}
+
+	function finish()
+	{
+		construct(1.0) if doing;
+		stop();
+	}
+
+	function stop()
+	{
+		if(doing)
+		{
+			System.removeContinuousHandler(handler);
+			doing	= false;
+			if(opacity<1)
+			{
+				visible	= false;
+//				dm("hide: "+name);
+			}
+			if(nextfunc!==void)
+			{
+				var func	= void;
+				nextfunc <-> func;
+				func(this);
+			}
+		}
+	}
+
+	//	モーダルする/解除
+	function setMode()
+	{
+		if(modestack.count>0)
+		{
+			(global.KAGLayer.removeMode incontextof modestack[modestack.count-1])();
+			dm("move mode: "+modestack[modestack.count-1].name+"→"+name);
+		}
+		modestack.add(this);	//	これからモーダル状態にする(現在の)レイヤーを登録
+//		dm("=-=- set Mode: "+name+"("+modestack.count+")");
+
+		global.KAGLayer.setMode(...);
+	}
+
+	function removeMode()
+	{
+		if(modestack.count<1 || modestack[modestack.count-1]!=this)
+		{
+			new Exception("今モーダル状態を解除しようとしたレイヤーは、最上位のモーダルレイヤーではありません。");
+			return;
+		}
+
+		global.KAGLayer.removeMode(...);
+
+		modestack.erase(modestack.count-1);	//	今モーダル状態を解除したこのレイヤーを削除
+		if(modestack.count>0)
+		{
+			(global.KAGLayer.setMode incontextof modestack[modestack.count-1])();
+			dm("move mode: "+name+"→"+modestack[modestack.count-1].name);
+//			dm("focusedLayer: "+kag.focusedLayer.name) if kag.focusedLayer;
+		}
+//		dm("=-=- remove Mode: "+name+"("+modestack.count+")");
+	}
+
+	//	自分自身を処分する
+	function suicide(time)
+	{
+		release(delayTimer);
+		delayTimer	= new Timer(
+			function {
+				invalidate this;
+			} incontextof this,
+			""
+		);
+		delayTimer.interval	= time;
+		delayTimer.enabled	= true;
+	}
+
+	//	指定のオブジェクトにフォーカスを向ける、時間差で。
+	function delayFocus(time, it)
+	{
+		focusitem = it;
+		delayTimer	= new Timer(
+			function {
+				release(delayTimer);
+				focusitem.focus();
+			} incontextof this,
+			""
+		);
+		delayTimer.interval	= time;
+		delayTimer.enabled	= true;
+	}
+/*
+	property hint
+	{
+		setter(h)	{
+			// hintは設定しない
+		}
+		getter		{ return super.hint; }
+	}
+*/}
+
+/*----------------------------------------------------------------------------/
+/
+/----------------------------------------------------------------------------*/
+@endif

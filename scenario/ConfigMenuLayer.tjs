@@ -1,0 +1,623 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) 1999-2002 TYPE-MOON All Rights Reserved.
+/		コンフィグメニュー
+/----------------------------------------------------------------------------*/
+@if(__CONFIGMENULAYER_DEFINED__==0)
+@set(__CONFIGMENULAYER_DEFINED__=1)
+
+Scripts.execStorage("ExtendMenuLayer.tjs");
+Scripts.execStorage("subroutine.tjs");
+Scripts.execStorage("FontSelectLayer.tjs");
+Scripts.execStorage("SliderLayer.tjs");
+
+class ConfigMenuLayer extends ExtendMenuLayer
+{
+	var bgcolor		= 0x80000000;
+
+	var title;
+	var titleimage	= "conf_title";
+	var titlepos	= [ 0, 3 ];
+	var bg;
+	var bgimage		= "conf_ウィンドウ";
+	var bgpos		= [ 19, 67 ];
+
+	var button = 0;
+	var check = 1;
+	var slider = 2;
+	var radio = 3;
+	var button2 = 4;
+
+	var scrollAreas		= [
+		[ "userChSpeed",		 71, 123 ],
+		[ "userCh2ndSpeed",		 71, 186 ],
+		[ "autoModePageWait",	 71, 249 ],
+		[ "globalVolume",		376, 123 ],
+		[ "bgmVolume",			376, 179 ],
+		[ "seVolume",			376, 246 ]
+	];
+	var scrollAreaSize	= [ 210, 15 ];
+
+	//	[1]は形状の種類とsf,kag,scflagsのどれに値を保存するかの指定
+	var iteminfo = [
+		[ "userChSpeed",			slider|0x100,	"slider",	"userChSpeed",				71,	121,	"未読メッセージの文字表示間隔を変更します。",					211,	50, 184, 103, 27, 15,	0xFF364A4C, 5 ],
+		[ "chNonStopToPageBreak",	check|0x100,	"checkbox",	"chNonStopToPageBreak",		52-2,	145,	"未読部分をページ末まで一気に表示する/しないを指定します。",	true ],
+		[ "userCh2ndSpeed",			slider|0x100,	"slider",	"userCh2ndSpeed",			71,	184,	"既読メッセージの文字表示間隔を変更します。",					211,	50, 184, 166, 27, 15,	0xFF364A4C, 5 ],
+		[ "ch2ndNonStopToPageBreak",check|0x100,	"checkbox",	"ch2ndNonStopToPageBreak",	52-2,	208,	"既読部分をページ末まで一気に表示する/しないを指定します。",	true ],
+		[ "autoModePageWait",		slider|0x100,	"slider",	"autoModePageWait",			71,	247,	"自動的に読み進む際の、ページ切り替え待ち時間を変更します。",	211,	99, 226, 228, 35, 15,	0xFF364A4C, 100 ],
+
+		[ "globalVolume",	slider|0x200,	"slider",	"globalVolume",	376,122,	"主音量を変更します。",			211,	20,,,,,,5 ],
+		[ "bgmVolume",		slider|0x200,	"slider",	"bgmVolume",	376,177,	"背景音楽の音量を変更します。",	211,	20,,,,,,5 ],
+		[ "sePlay",			button2,"conf_test","",				468,215,	"効果音をランダムに再生します。\n音量を調節するのに使用してください。" ],
+		[ "seVolume",		slider|0x200,	"slider",	"seVolume",		376,244,	"効果音の音量を変更します。",	211,	20,,,,,,5 ],
+
+		[ "Ch2ndSkip.on",			radio,	"conf_on",		"Ch2ndSkip",		172,328,	"既読のシーンをスキップします。",	true ],
+		[ "Ch2ndSkip.off",			radio,	"conf_off",		"Ch2ndSkip",		248,328,	"既読のシーンをスキップしません。",	false ],
+		[ "skipWithoutCheck.on",	radio,	"conf_on",		"skipWithoutCheck",	172,371,	"既読のシーンに至ったとき、スキップするか確認を行います。",	false ],
+		[ "skipWithoutCheck.off",	radio,	"conf_off",		"skipWithoutCheck",	248,371,	"既読のシーンは強制的にスキップします。",					true ],
+		[ "skipKey.enter",			radio,	"conf_enter",	"skipKey",			96,	422,	"Enterキーを押しっぱなしにすることで、メッセージを早送りにします。",	1 ],
+		[ "skipKey.ctrl",			radio,	"conf_ctrl",	"skipKey",			172,422,	"Ctrlキーを押しっぱなしにすることで、メッセージを早送りにします。",		2 ],
+		[ "skipKey.shift",			radio,	"conf_shift",	"skipKey",			248,422,	"Shiftキーを押しっぱなしにすることで、メッセージを早送りにします。",	3 ],
+
+		[ "effectSkip.on",	radio,	"conf_on",	"effectSkip",		468,301,	"エフェクトを瞬間表示します。",					true ],
+		[ "effectSkip.off",	radio,	"conf_off",	"effectSkip",		544,301,	"エフェクトを製作者の意図どおりに再生します。",	false ],
+		[ "textOnOff.on",	radio,	"conf_on",	"notextonoff",		468,338,	"キャラクター画像の(表情等の)変化の際に、一度テキストを消してから切替を行います。",	false ],
+		[ "textOnOff.off",	radio,	"conf_off",	"notextonoff",		544,338,	"キャラクター画像の(表情等の)変化の際にテキストを消しません。",	true ],
+		[ "specialEffect.on",	radio,	"conf_on",	"speffect",		468,374,	"特殊効果(火の粉、ノイズなど)を表示します。\n十分な処理速度のある環境でのみONにしてください。",	true ],
+		[ "specialEffect.off",	radio,	"conf_off",	"speffect",		544,374,	"特殊効果(火の粉、ノイズなど)を表示しません。",	false ],
+		[ "changeFont",		button2,"conf_変更",	"",	496,414,	"フォントを変更します。\nここでの決定は、OKボタンが押されて\nページが切り替わった後から有効になります。" ],
+
+		[ "doubleCushionMenuOpen.on",	radio,	"conf_mouseA",	"doubleCushionMenuOpen",	141,521,	"メニューアクション(右クリック/ESC/Homeキー)一回で\nメニュー画面を表示します。",		false ],
+		[ "doubleCushionMenuOpen.off",	radio,	"conf_mouseB",	"doubleCushionMenuOpen",	379,505,	"メニューアクション(右クリック/ESC/Homeキー)一回で\nメッセージを消去し、もう一度行うことでメニュー画面を表示します。",	true ],
+
+		[ "ok",		button, "conf_ok",		"",	660, 456, "変更を有効にして、設定を終了します。", 3 ],
+		[ "default",button, "conf_default", "", 660, 500, "初期状態へ戻します。", 3 ],
+		[ "back",	button, "conf_cancel",	"",	660, 544, "変更を無視して終了します。", 3 ]
+	];
+
+	//	キーに対応した移動
+	var onkeyfocuses	= [
+	//	left, right, up, down
+		,
+		,
+		,
+		,
+		,
+
+		,
+		,
+		,
+		,
+
+		[ "effectSkip.off",		,					,						"skipWithoutCheck.on" ],
+		[ ,						"effectSkip.on",	"seVolume",				"skipWithoutCheck.off" ],
+		[ "textOnOff.off",		,					"Ch2ndSkip.on",			"skipKey.ctrl" ],
+		[ ,						"textOnOff.on",		"Ch2ndSkip.off",		"skipKey.shift" ],
+		[ "specialEffect.off",	,					"skipWithoutCheck.on",	"effectSkip.on" ],
+		[ ,						,					"skipWithoutCheck.on",	"effectSkip.on" ],
+		[ ,						"effectSkip.on",	"skipWithoutCheck.off",	"effectSkip.off" ],
+
+		[ "Ch2ndSkip.off",			,						"skipKey.ctrl",		"textOnOff.on" ],
+		[ ,							"Ch2ndSkip.on",			"skipKey.shift",	"textOnOff.off" ],
+		[ "skipWithoutCheck.off",	,						"effectSkip.on",	"specialEffect.on" ],
+		[ ,							"skipWithoutCheck.on",	"effectSkip.off",	"specialEffect.off" ],
+		[ "skipKey.shift",			,						"textOnOff.on",		"changeFont" ],
+		[ ,							"skipKey.enter",		"textOnOff.off",	"changeFont" ],
+		[ "skipKey.shift",			"skipKey.enter",		"specialEffect.on",	"doubleCushionMenuOpen.off" ],
+
+		[ ,	,	"skipKey.shift",	"ok" ],
+		[ ,	,	"changeFont",		"ok" ],
+
+		,
+		,
+		
+	];
+
+	var items = [];		//	コンフィグに利用するボタン等
+	var last = %[];
+//	var fontface;
+	var curitem;	//	主にスライダー判別に使用
+
+	var lasttime;
+	var lastaccel;
+
+	var buttondownsound	= "コンフィグ-決定";
+	var entersound		= "コンフィグ-ボタンオン";
+	var slidesound		= "コンフィグ-スライド";
+
+	var itChanges;
+
+	var testSE	= [
+		"se099",
+		"se100",
+		"se102",
+		"se103"
+	];
+
+	var historyFont	= %[
+	//	フォントに対応した	フォントと		太字にするか
+		"ＭＳ 明朝"		=> [ "ＭＳ Ｐゴシック", false ],
+		"ＭＳ ゴシック"	=> [ "ＭＳ Ｐ明朝", true ]
+	];
+	var historyFontDefault	=  [ "ＭＳ Ｐ明朝", true ];
+
+	var showed;
+
+	function ConfigMenuLayer(win, par)
+	{
+		super.ExtendMenuLayer(...);
+
+		name	= "コンフィグメニュー";
+		var w, h;
+		setSize(w = win.scWidth, h = win.scHeight);
+		fillRect(0, 0, w, h, bgcolor);	//	透明
+		hitType		= htMask;
+		hitThreshold= 192;
+
+		itChanges	= false;	//	変更はしない
+
+		var layer;
+		with(title	= new global.KAGLayer(win, this))	//	タイトル
+		{
+			.loadImages(titleimage);
+			.setSizeToImageSize();
+			pileRect(titlepos[0], titlepos[1], title, 0, 0, .width, .height);
+/*			.setSizeToImageSize();
+			.setPos(titlepos[0], titlepos[1]);
+			.hitType		= htMask;
+			.hitThreshold	= 255;		//	すべて透過
+			.visible	= true;
+*/			invalidate title;	title	= void;
+		}
+
+		with(bg	= new global.KAGLayer(win, this))		//	背景
+		{
+			.loadImages(bgimage);
+			.setSizeToImageSize();
+			pileRect(bgpos[0], bgpos[1], bg, 0, 0, .width, .height);
+/*			.setSizeToImageSize();
+			.setPos(bgpos[0], bgpos[1]);
+			.hitType		= htMask;
+			.hitThreshold	= 255;		//	すべて透過
+			.visible	= true;
+*/			invalidate bg;	bg	= void;
+		}
+
+		if(sf.configDefault === void)
+			sf.configDefault	= %[];	//	デフォルト値を入れる箱
+
+		var ii = iteminfo;
+		var it = items;
+		var trg, _sf = sf;
+		for(var i=0; i<ii.count; i++)
+		{
+			var info = ii[i];
+			var c;
+			if(info[1] & 0x100)
+				trg	= win;
+			else if(info[1] & 0x200)
+				trg	= win.scflags;
+			else
+				trg	= _sf;
+			switch(info[1]&0xFF)
+			{
+			case button:
+				c = new global.ExButtonLayer(win, this, info[0], info[4], info[5], info[2], info[6]);
+				c["no"]	= i;
+				if(info[7]!==void)
+					c.mode	= info[7];
+				else
+					c.changePushButton();
+				break;
+
+			case check:
+				c = new global.ExButtonLayer(win, this, info[0], info[4], info[5], info[2], info[6]);
+				c["no"]	= i;
+				if(trg[info[3]] == info[7])
+					c.on();	//	現在値が自身の持つ値と同じならON状態にする
+				break;
+
+			case radio:
+				c = new global.ExButtonLayer(win, this, info[0], info[4], info[5], info[2], info[6]);
+				c["no"]	= i;
+				c.changeRadioButton();
+				if(trg[info[3]] == info[7])
+					c.on();	//	現在値が自身の持つ値と同じならON状態にする
+				break;
+
+			case slider:
+				c = new global.SliderLayer(win, this, info[0], info[4], info[5], info[2], info[6], info[7], info[8] );
+				c["no"]	= i;
+				c.value	= trg[info[3]] / info[14];	//	現在値を設定
+				break;
+
+			case button2:
+				c = new global.ExButtonLayer(win, this, info[0], info[4], info[5], info[2], info[6]);
+				c["no"]	= i;
+				c.mode	= 3;	//	押されるだけだけど、画像は4枚
+				break;
+
+			}
+			c["itemtype"]	= info[1] & 0xFF;
+			c.readyVisible();
+			if(info[3]!="")
+				last[info[3]]	= trg[info[3]];		//	初期値を保存
+			it.add(c);
+
+			//	デフォルト値を保存
+			if(info[3]!="" && sf.configDefault[info[3]] === void)
+			{
+				sf.configDefault[info[3]] = [
+					(info[1]&0x100) ? "window" : ((info[1]&0x200) ? "scflags" : "sflags"),
+					trg[info[3]]
+				];
+			}
+
+			//	タイガー道場内ではフォント変更できない
+			if(info[0]=="changeFont" && f.textmode=="tiger")
+			{
+				c.enabled	= false;
+			}
+		}
+
+		//	フォーカス設定
+		var fs = onkeyfocuses;
+		var sfunc = function(it, id)
+		{
+			for(var i=0; i<it.count; i++)
+			{
+				if(it[i].id == id)
+					return it[i];
+			}
+			return void;
+		};
+		for(var i=0; i<fs.count; i++)
+		{
+			if(fs[i])
+			{
+				with(it[i])
+				{
+					//	各方向に対応した移動先レイヤーを調べる
+					.lefter	= sfunc(it, fs[i][0]);
+					.righter= sfunc(it, fs[i][1]);
+					.upper	= sfunc(it, fs[i][2]);
+					.lower	= sfunc(it, fs[i][3]);
+					.onKeyDown	= function(key, shift)
+					{
+						if(key==VK_LEFT && lefter)			lefter.focus();
+						else if(key==VK_RIGHT && righter)	righter.focus();
+						else if(key==VK_UP && upper)		upper.focus();
+						else if(key==VK_DOWN && lower)		lower.focus();
+						else
+							global.ExButtonLayer.onKeyDown(key, shift, true);
+					} incontextof it[i];
+				}
+			}
+		}
+
+		//	フォントの初期値を保存
+		last.fontface	= win.chDefaultFace;
+		last.fontbold	= win.current.defaultBold;
+		last.rubybold	= win.current.defaultRubyBold;
+
+	}
+
+	function finalize()
+	{
+		release(last);
+		var it = items;
+		for(var i=0; i<it.count; i++)
+			release(it[i]);
+		release(bg);
+		release(title);
+
+		super.finalize(...);
+	}
+
+	function show(time=lasttime, accel=lastaccel)
+	{
+		if(!showed)
+		{
+			showed	= true;
+			changeBGM(BGMList["config"]) if BGMList["config"]!=void;
+			fade(255, lasttime=time, lastaccel=accel);
+			delayFocus(50, items[0]);	//	時間差で先頭アイテムにフォーカスを移動
+//			items[0].focus();		//	先頭のアイテムにフォーカスを移動
+			//	↑こうしておかないと、タイトルのボタンからフォーカスを取り上げられない
+
+			moveCursor(this, 322, 282);
+		}
+	}
+
+	function hide(time=lasttime, accel=lastaccel)
+	{
+		if(showed)
+		{
+			super.hide(lasttime=time, lastaccel=accel);
+			showed	= false;
+		}
+		return true;
+	}
+
+	function closeThis(withparent=false)
+	{
+		//	終了処理を行う
+		if(itChanges)
+		{
+			playSound(okSE);
+			changeSetting();
+		}
+		else
+		{
+			playSound(cancelSE);
+			restoreSetting();
+		}
+		restoreBGM() if BGMList["config"]!=void;
+
+		parent.closeChild(this, withparent);		//	親に閉じることを伝える
+	}
+
+	function changeSetting()
+	{
+		//	結果を反映する
+		var ii = iteminfo;
+		var item = items;
+		var trg, _sf = sf, win = window;
+		for(var i=0; i<ii.count; i++)
+		{
+			if(ii[i][1] & 0x100)
+				trg	= win;
+			else if(ii[i][1] & 0x200)
+				trg	= win.scflags;
+			else
+				trg	= _sf;
+			switch(ii[i][1] & 0xFF)
+			{
+			case check:
+				if(item[i].isOn)
+					trg[ii[i][3]] = ii[i][7];
+				else
+					trg[ii[i][3]] = 0;
+				break;
+			case radio:
+				if(item[i].isOn)
+					trg[ii[i][3]] = ii[i][7];
+				break;
+			case slider:
+				trg[ii[i][3]] = item[i].value * ii[i][14];	//	倍率変換
+				break;
+			}
+		}
+		window.setUserSpeed();
+		window.saveSystemVariables();
+
+		popupMessage(SMsg_configOk, parent);
+	}
+
+	function restoreSetting()
+	{
+		with(window)
+		{
+			with(.scflags)
+			{
+				//	音量を元に戻す
+				.globalVolume	= last.globalVolume;
+				.bgmVolume		= last.bgmVolume;
+				.seVolume		= last.seVolume;
+			}
+			.setVolume();
+/*	2回OKするというのがわかりにくいので、フォント選択ウィンドウでOKしたらあとはCANCELでも変更に。
+			//	フォントを元に戻す
+			.chDefaultFace			= last.fontface;
+			.current.defaultBold	= last.fontbold;
+			.current.defaultRubyBold= last.rubybold;
+			.setMessageLayerUserFont();
+*/		}
+	}
+
+	function getFontSetting()
+	{
+		with(window)
+		{
+			return %[
+				fontface:.chDefaultFace,
+				bold:.current.defaultBold,
+				rubybold:.current.defaultRubyBold
+			];
+		}
+	}
+
+	function setFontSetting(face, bold, rubybold)
+	{
+		with(window)
+		{
+			.chDefaultFace			= face;
+			.current.defaultBold	= bold;
+			.current.defaultRubyBold= rubybold;
+			.setMessageLayerUserFont();
+
+			//	履歴レイヤーのフォントを変更する
+			var hf;
+			if(historyFont[face]!=void)
+				hf	= historyFont[face];
+			else
+				hf	= historyFontDefault;
+
+			with(.historyLayer.font)
+			{
+				.face = sf.historyFont = hf[0];
+				.bold = sf.historyFontBold = hf[1];
+			}
+		}
+	}
+
+	function getTextWindowSetting()
+	{
+		return window.current.frameGraphic;
+	}
+
+	function setTextWindowSetting(textwindow)
+	{
+		with(window.fore.messages[0])
+		{
+			.frameGraphic	= textwindow;
+			.imageModified= true;		//	更新させる
+		}
+		with(window.back.messages[0])
+		{
+			.frameGraphic	= textwindow;
+			.imageModified= true;		//	更新させる
+		}
+		sf.frameGraphic	= textwindow;
+	}
+
+	//	設定をデフォルトに戻す
+	function resetValue()
+	{
+		var ii = iteminfo;
+		var it = items;
+		var defs = sf.configDefault;
+		for(var i=0; i<ii.count; i++)
+		{
+			var info = ii[i];
+			var item = it[i];
+//			dm(info[0]+": "+(info[1]&0xFF));
+			switch(info[1]&0xFF)
+			{
+			case radio:
+			case check:
+//				dm(item.name+": "+item.state);
+				if(sf.configDefault[info[3]][1] == info[7])	item.on();
+				else					item.off();
+//				dm("-> "+item.state);
+				break;
+			case slider:
+				item.value = sf.configDefault[info[3]][1] / info[14];
+				break;
+			}
+		}
+	}
+
+	function onDoubleClick()
+	{
+		//	ダブルクリックされたら、OKへ移動
+		moveCursor(, 718, 560);
+	}
+
+	function onMouseDown(x, y, button, shift)
+	{
+		if(!showed)	return;	//	受付状態になければ無視する
+		if(button == mbLeft)
+		{
+//			dm(@"click: ${x}, ${y}");
+			var sas = scrollAreas;
+			var sw = scrollAreaSize[0], sh = scrollAreaSize[1];
+			var click	= false;
+			for(var i=0; i<sas.count; i++)
+			{
+				var sa	= sas[i];
+//				dm(@"(${x}, ${y}) : (${sa[1]}, ${sa[2]})-(${sa[1]+sw}, ${sa[2]+sh})");
+				if(x>=sa[1] && x<sa[1]+sw && y>=sa[2] && y<sa[2]+sh)
+				{
+//					dm("in["+sa[i]+"]: "+i);
+					//	スクロール範囲内をクリックした
+					var it = items;
+					for(var j=0; j<it.count; j++)
+					{
+						if(it[j].id == sa[0])
+						{
+							//	該当のスライダーを移動させる
+							it[j].pos	= x - it[j].basex - (it[j].width>>1);
+							click	= true;
+							break;
+						}
+					}
+					break;
+				}
+			}
+		}
+		else if(button == mbRight)
+			closeThis();
+	}
+
+	function onButtonDown(btn)
+	{
+		if(!showed)	return;	//	受付状態になければ無視する
+		var ii = iteminfo;
+		switch(btn.itemtype)
+		{
+		case button:
+			switch(btn.id)
+			{
+			case "ok":
+				itChanges	= true;
+			case "back":
+				closeThis(btn.id=="ok");
+				break;
+			case "default":
+				resetValue();	//	初期状態へ戻す
+				break;
+			default:
+				playSound(clickSE);
+			}
+			break;
+
+		case radio:
+			dm("call radio on");
+			//	選ばれた以外のボタンをオフにする
+			//	(ラジオグループ単位でまとめてないので、ここで行う必要がある)
+			var it = items;
+			var info = ii[btn.no];
+			for(var i=0; i<ii.count; i++)
+			{
+//				dm(info[3]+" == "+ii[i][3]);
+				if(ii[i][3]==info[3])
+					it[i].off(), dm("off = "+it[i].name) if it[i] != btn;
+			}
+			playSound(clickSE);
+			break;
+
+		case button2:
+			switch(btn.id)
+			{
+			case "changeFont":
+				playSound(clickSE);
+//				kag.selectFont();
+				var fontselecter	= new FontSelectLayer(window, this);
+				fontselecter.show(300, 0);
+				break;
+
+			case "sePlay":
+				//	効果音をランダムに再生する
+				playSound(testSE[int(Math.random()*testSE.count)]);
+				break;
+			}
+			break;
+		}
+	}
+
+	function onChangeValue(slider, value)
+	{
+		var info = iteminfo[slider.no];
+		var v = int(value) * info[14];
+		if(info[9]!==void)
+		{
+			//	値を表示する
+			fillRect(info[9], info[10], info[11], info[12], info[13]);	//	以前の数値を消去
+			font.height = info[12] if font.height != info[12];
+			var lt = info[9] + info[11] - font.getTextWidth(string(v));		//	右詰で
+			drawText(lt, info[10], string(v), 0xD2EEED);
+//			dm(slider.name+" ("+lt+","+info[10]+") = "+v);
+		}
+		else
+		{
+			window.scflags[info[3]]	= v;
+			dm("slide: "+info[0]+" = "+v+"% ("+window.scflags[info[3]]+" %)");
+			window.setVolume();	//	ボリュームを更新
+		}
+	}
+}
+
+/*-----------------------------------------------------------------------------
+/	End of File
+/----------------------------------------------------------------------------*/
+@endif

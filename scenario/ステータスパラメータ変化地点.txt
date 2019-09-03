@@ -1,0 +1,318 @@
+○閲覧可能になる地点
+
+・基本7人
+セイバールート\四日目\セイバールート四日目-05.ks(797): @canseeStatusMenu
+セイバールート\四日目\セイバールート四日目-18.ks(119): @canseeStatusMenu
+
+凛ルート\四日目\凛ルート四日目-10.ks(531): @canseeStatusMenu
+
+桜ルート\四日目\桜ルート四日目-10.ks(892): @canseeStatusMenu
+
+・特殊3人
+セイバールート\十三日目\セイバールート十三日目-09.ks(944): @canSeeStatusMenu name=ギルガメッシュ
+
+凛ルート\十三日目\凛ルート十三日目-04.ks(1009): @canSeeStatusMenu name=ギルガメッシュ
+
+桜ルート\八日目\桜ルート八日目-09.ks(81): @canSeeStatusMenu name=真アサシン
+桜ルート\十日目\桜ルート十日目-19.ks(181): @canSeeStatusMenu name=ダークセイバー
+
+
+○初遭遇ポイント(*は閲覧可能になった時点で遭遇している)
+
+*セイバールート\四日目\セイバールート四日目-05.ks(802): @encountServant name=セイバー
+*セイバールート\四日目\セイバールート四日目-05.ks(810): @encountServant name=バーサーカー
+*セイバールート\四日目\セイバールート四日目-05.ks(817): @encountServant name=ランサー
+*セイバールート\四日目\セイバールート四日目-05.ks(819): @encountServant name=アーチャー
+*セイバールート\四日目\セイバールート四日目-18.ks(124): @encountServant name=セイバー
+*セイバールート\四日目\セイバールート四日目-18.ks(133): @encountServant name=バーサーカー
+*セイバールート\四日目\セイバールート四日目-18.ks(139): @encountServant name=ランサー
+*セイバールート\四日目\セイバールート四日目-18.ks(141): @encountServant name=アーチャー
+
+セイバールート\六日目\セイバールート六日目-00.ks(261): @encountServant name=ライダー
+セイバールート\六日目\セイバールート六日目-08.ks(559): @encountServant name=アサシン
+セイバールート\十三日目\セイバールート十三日目-04.ks(265): @encountServant name=キャスター
+セイバールート\十三日目\セイバールート十三日目-09.ks(943): @encountServant name=ギルガメッシュ
+
+*凛ルート\四日目\凛ルート四日目-10.ks(537): @encountServant name=セイバー
+*凛ルート\四日目\凛ルート四日目-10.ks(546): @encountServant name=バーサーカー
+*凛ルート\四日目\凛ルート四日目-10.ks(553): @encountServant name=ランサー
+*凛ルート\四日目\凛ルート四日目-10.ks(556): @encountServant name=アーチャー
+
+凛ルート\六日目\凛ルート六日目-06.ks(252): @encountServant name=キャスター
+凛ルート\六日目\凛ルート六日目-12.ks(742): @encountServant name=アサシン
+凛ルート\十三日目\凛ルート十三日目-04.ks(1008): @encountServant name=ギルガメッシュ
+
+*桜ルート\四日目\桜ルート四日目-10.ks(898): @encountServant name=セイバー
+*桜ルート\四日目\桜ルート四日目-10.ks(906): @encountServant name=バーサーカー
+*桜ルート\四日目\桜ルート四日目-10.ks(913): @encountServant name=ランサー
+*桜ルート\四日目\桜ルート四日目-10.ks(916): @encountServant name=アーチャー
+
+桜ルート\五日目\桜ルート五日目-21.ks(314): @encountServant name=キャスター
+桜ルート\八日目\桜ルート八日目-09.ks(79): @encountServant name=真アサシン
+桜ルート\十日目\桜ルート十日目-19.ks(180): @encountServant name=ダークセイバー
+桜ルート\四日目\桜ルート四日目-05.ks(70): @encountServant name=ライダー
+
+
+○スキルを使用した(判明した)ポイント(*は閲覧可能になった時点で判明している)
+
+*セイバールート\四日目\セイバールート四日目-05.ks(799): @useSkill name=セイバー skill=魔力放出
+*セイバールート\四日目\セイバールート四日目-05.ks(800): @useSkill name=セイバー skill=直感
+*セイバールート\四日目\セイバールート四日目-05.ks(804): @useSkill name=バーサーカー skill=神性
+*セイバールート\四日目\セイバールート四日目-05.ks(805): @useSkill name=バーサーカー skill=勇猛
+*セイバールート\四日目\セイバールート四日目-05.ks(806): @useSkill name=バーサーカー skill=心眼(偽)
+*セイバールート\四日目\セイバールート四日目-05.ks(807): @useSkill name=バーサーカー skill=戦闘続行
+*セイバールート\四日目\セイバールート四日目-05.ks(814): @useSkill name=ランサー skill=神性
+*セイバールート\四日目\セイバールート四日目-05.ks(815): @useSkill name=ランサー skill=仕切り直し
+*セイバールート\四日目\セイバールート四日目-05.ks(816): @useSkill name=ランサー skill=戦闘続行
+*セイバールート\四日目\セイバールート四日目-18.ks(121): @useSkill name=セイバー skill=魔力放出
+*セイバールート\四日目\セイバールート四日目-18.ks(122): @useSkill name=セイバー skill=直感
+*セイバールート\四日目\セイバールート四日目-18.ks(126): @useSkill name=バーサーカー skill=神性
+*セイバールート\四日目\セイバールート四日目-18.ks(127): @useSkill name=バーサーカー skill=勇猛
+*セイバールート\四日目\セイバールート四日目-18.ks(128): @useSkill name=バーサーカー skill=心眼(偽)
+*セイバールート\四日目\セイバールート四日目-18.ks(129): @useSkill name=バーサーカー skill=戦闘続行
+*セイバールート\四日目\セイバールート四日目-18.ks(136): @useSkill name=ランサー skill=神性
+*セイバールート\四日目\セイバールート四日目-18.ks(137): @useSkill name=ランサー skill=仕切り直し
+*セイバールート\四日目\セイバールート四日目-18.ks(138): @useSkill name=ランサー skill=戦闘続行
+
+セイバールート\六日目\セイバールート六日目-08.ks(556): @useSkill name=アサシン skill=心眼(偽)
+セイバールート\六日目\セイバールート六日目-14.ks(818): @useSkill name=アサシン skill=宋和の心得
+セイバールート\六日目\セイバールート六日目-14.ks(819): @useSkill name=アサシン skill=透化
+セイバールート\六日目\セイバールート六日目-14.ks(820): @useSkill name=アサシン skill=燕返し
+
+セイバールート\十一日目\セイバールート十一日目-00.ks(255): @useSkill name=セイバー skill=カリスマ
+
+セイバールート\十三日目\セイバールート十三日目-04.ks(264): @useSkill name=キャスター skill=高速神言
+
+セイバールート\十三日目\セイバールート十三日目-09.ks(942): @useSkill name=ギルガメッシュ skill=カリスマ
+セイバールート\十四日目\セイバールート十四日目-00.ks(987): @useSkill name=ギルガメッシュ skill=神性
+
+セイバールート\十日目\セイバールート十日目-01.ks(316): @useSkill name=ライダー skill=神性
+
+凛ルート\六日目\凛ルート六日目-06.ks(251): @useSkill name=キャスター skill=高速神言
+
+凛ルート\六日目\凛ルート六日目-12.ks(743): @useSkill name=アーチャー skill=心眼(真)
+凛ルート\十三日目\凛ルート十三日目-13.ks(739): @useSkill name=キャスター skill=金羊の皮
+
+凛ルート\十三日目\凛ルート十三日目-05.ks(176): @useSkill name=ギルガメッシュ skill=神性
+凛ルート\十三日目\凛ルート十三日目-05.ks(177): @useSkill name=ギルガメッシュ skill=カリスマ
+凛ルート\十三日目\凛ルート十三日目-05.ks(178): @useSkill name=ギルガメッシュ skill=黄金律
+
+凛ルート\十三日目\凛ルート十三日目-20.ks(9): @useSkill name=ランサー skill=神性
+凛ルート\十三日目\凛ルート十三日目-20.ks(10): @useSkill name=ランサー skill=ルーン
+凛ルート\十三日目\凛ルート十三日目-20.ks(11): @useSkill name=ランサー skill=戦闘続行
+
+凛ルート\十四〜十六日目\凛ルート十四日目-03.ks(9): @useSkill name=アーチャー skill=魔術
+
+*凛ルート\四日目\凛ルート四日目-10.ks(533): @useSkill name=セイバー skill=カリスマ
+*凛ルート\四日目\凛ルート四日目-10.ks(534): @useSkill name=セイバー skill=魔力放出
+*凛ルート\四日目\凛ルート四日目-10.ks(535): @useSkill name=セイバー skill=直感
+*凛ルート\四日目\凛ルート四日目-10.ks(540): @useSkill name=バーサーカー skill=神性
+*凛ルート\四日目\凛ルート四日目-10.ks(541): @useSkill name=バーサーカー skill=勇猛
+*凛ルート\四日目\凛ルート四日目-10.ks(542): @useSkill name=バーサーカー skill=心眼(偽)
+*凛ルート\四日目\凛ルート四日目-10.ks(543): @useSkill name=バーサーカー skill=戦闘続行
+*凛ルート\四日目\凛ルート四日目-10.ks(549): @useSkill name=ランサー skill=神性
+*凛ルート\四日目\凛ルート四日目-10.ks(550): @useSkill name=ランサー skill=矢よけの加護
+*凛ルート\四日目\凛ルート四日目-10.ks(551): @useSkill name=ランサー skill=仕切り直し
+*凛ルート\四日目\凛ルート四日目-10.ks(552): @useSkill name=ランサー skill=戦闘続行
+*凛ルート\四日目\凛ルート四日目-10.ks(555): @useSkill name=アーチャー skill=千里眼
+
+桜ルート\五日目\桜ルート五日目-21.ks(311): @useSkill name=キャスター skill=金羊の皮
+桜ルート\五日目\桜ルート五日目-21.ks(312): @useSkill name=キャスター skill=高速神言
+
+桜ルート\八日目\桜ルート八日目-09.ks(75): @useSkill name=真アサシン skill=風除けの加護
+桜ルート\八日目\桜ルート八日目-09.ks(76): @useSkill name=真アサシン skill=投擲(短刀)
+
+桜ルート\八日目\桜ルート八日目-09.ks(491): @useSkill name=ライダー skill=単独行動
+桜ルート\八日目\桜ルート八日目-09.ks(492): @useSkill name=ライダー skill=怪力
+桜ルート\九日目\桜ルート九日目-19.ks(1159): @useSkill name=ライダー skill=神性
+桜ルート\九日目\桜ルート九日目-19.ks(1160): @useSkill name=ライダー skill=魔眼
+桜ルート\十三日目\桜ルート十三日目-05.ks(68): @useSkill name=ライダー skill=単独行動
+
+桜ルート\十日目\桜ルート十日目-19.ks(176): @useSkill name=ダークセイバー skill=カリスマ
+桜ルート\十日目\桜ルート十日目-19.ks(177): @useSkill name=ダークセイバー skill=魔力放出
+桜ルート\十日目\桜ルート十日目-19.ks(178): @useSkill name=ダークセイバー skill=直感
+
+桜ルート\十五日目\桜ルート十五日目-11.ks(119): @useSkill name=真アサシン skill=自己改造
+
+*桜ルート\四日目\桜ルート四日目-10.ks(894): @useSkill name=セイバー skill=カリスマ
+*桜ルート\四日目\桜ルート四日目-10.ks(895): @useSkill name=セイバー skill=魔力放出
+*桜ルート\四日目\桜ルート四日目-10.ks(896): @useSkill name=セイバー skill=直感
+*桜ルート\四日目\桜ルート四日目-10.ks(900): @useSkill name=バーサーカー skill=神性
+*桜ルート\四日目\桜ルート四日目-10.ks(901): @useSkill name=バーサーカー skill=勇猛
+*桜ルート\四日目\桜ルート四日目-10.ks(902): @useSkill name=バーサーカー skill=心眼(偽)
+*桜ルート\四日目\桜ルート四日目-10.ks(903): @useSkill name=バーサーカー skill=戦闘続行
+*桜ルート\四日目\桜ルート四日目-10.ks(909): @useSkill name=ランサー skill=神性
+*桜ルート\四日目\桜ルート四日目-10.ks(910): @useSkill name=ランサー skill=矢よけの加護
+*桜ルート\四日目\桜ルート四日目-10.ks(911): @useSkill name=ランサー skill=仕切り直し
+*桜ルート\四日目\桜ルート四日目-10.ks(912): @useSkill name=ランサー skill=戦闘続行
+*桜ルート\四日目\桜ルート四日目-10.ks(915): @useSkill name=アーチャー skill=千里眼
+
+○マスターが判明したポイント
+
+セイバールート\六日目\セイバールート六日目-00.ks(260): @knowMasterName name=ライダー
+セイバールート\十五日目\セイバールート十五日目-02.ks(579): @knowMasterName name=ランサー
+セイバールート\十五日目\セイバールート十五日目-21.ks(440): @knowMasterName name=ギルガメッシュ
+
+*セイバールート\四日目\セイバールート四日目-05.ks(798): @knowMasterName name=セイバー
+*セイバールート\四日目\セイバールート四日目-05.ks(809): @knowMasterName name=バーサーカー
+*セイバールート\四日目\セイバールート四日目-05.ks(818): @knowMasterName name=アーチャー
+*セイバールート\四日目\セイバールート四日目-18.ks(120): @knowMasterName name=セイバー
+*セイバールート\四日目\セイバールート四日目-18.ks(132): @knowMasterName name=バーサーカー
+*セイバールート\四日目\セイバールート四日目-18.ks(140): @knowMasterName name=アーチャー
+
+凛ルート\九日目\凛ルート九日目-12.ks(282): @knowMasterName name=キャスター
+凛ルート\六日目\凛ルート六日目-10.ks(312): @knowMasterName name=ライダー
+凛ルート\六日目\凛ルート六日目-12.ks(741): @knowMasterName name=アサシン
+
+*凛ルート\四日目\凛ルート四日目-10.ks(532): @knowMasterName name=セイバー
+*凛ルート\四日目\凛ルート四日目-10.ks(545): @knowMasterName name=バーサーカー
+*凛ルート\四日目\凛ルート四日目-10.ks(554): @knowMasterName name=アーチャー
+
+桜ルート\八日目\桜ルート八日目-09.ks(78): @knowMasterName name=真アサシン
+桜ルート\十四日目\桜ルート十四日目-06.ks(327): @knowMasterName name=ダークセイバー
+
+*桜ルート\四日目\桜ルート四日目-05.ks(69): @knowMasterName name=ライダー
+*桜ルート\四日目\桜ルート四日目-10.ks(893): @knowMasterName name=セイバー
+*桜ルート\四日目\桜ルート四日目-10.ks(905): @knowMasterName name=バーサーカー
+*桜ルート\四日目\桜ルート四日目-10.ks(914): @knowMasterName name=アーチャー
+
+
+○法具が使われたポイント
+
+セイバールート\五日目\セイバールート五日目-09.ks(184): @useSpecial name=ランサー special=ゲイボルク
+セイバールート\九日目\セイバールート九日目-03.ks(288): @useSpecial name=ライダー special=鮮血神殿
+セイバールート\十日目\セイバールート十日目-04.ks(983): @useSpecial name=ライダー special=騎英の手綱
+セイバールート\十日目\セイバールート十日目-04.ks(984): @useSpecial name=セイバー special=エクスカリバー
+セイバールート\十一日目\セイバールート十一日目-12.ks(749): @useSpecial name=バーサーカー special=十二の試練(裏)
+セイバールート\十四日目\セイバールート十四日目-00.ks(988): @useSpecial name=ギルガメッシュ special=王の財宝
+セイバールート\十四日目\セイバールート十四日目-00.ks(1368): @useSpecial name=ギルガメッシュ special=エヌマ・エリシュ
+セイバールート\十五日目\セイバールート十五日目-13.ks(1444): @useSpecial name=セイバー special=アヴァロン
+
+*セイバールート\四日目\セイバールート四日目-05.ks(801): @useSpecial name=セイバー special=風王結界
+*セイバールート\四日目\セイバールート四日目-05.ks(808): @useSpecial name=バーサーカー special=十二の試練
+*セイバールート\四日目\セイバールート四日目-05.ks(812): @useSpecial name=ランサー special=ゲイボルク
+*セイバールート\四日目\セイバールート四日目-18.ks(123): @useSpecial name=セイバー special=風王結界
+*セイバールート\四日目\セイバールート四日目-18.ks(130): @useSpecial name=バーサーカー special=十二の試練
+*セイバールート\四日目\セイバールート四日目-18.ks(135): @useSpecial name=ランサー special=ゲイボルク
+
+凛ルート\七日目\凛ルート七日目-08.ks(646): @useSpecial name=ライダー special=鮮血神殿
+凛ルート\十一日目\凛ルート十一日目-06.ks(397): @useSpecial name=キャスター special=ルールブレイカー
+凛ルート\十三日目\凛ルート十三日目-04.ks(1007): @useSpecial name=ギルガメッシュ special=王の財宝
+凛ルート\十四〜十六日目\凛ルート十四日目-19.ks(874): @useSpecial name=ランサー special=グングニール
+凛ルート\十四〜十六日目\凛ルート十四日目-36.ks(1033): @useSpecial name=アーチャー special=無限の剣製
+
+*凛ルート\四日目\凛ルート四日目-10.ks(536): @useSpecial name=セイバー special=風王結界
+*凛ルート\四日目\凛ルート四日目-10.ks(544): @useSpecial name=バーサーカー special=十二の試練
+*凛ルート\四日目\凛ルート四日目-10.ks(548): @useSpecial name=ランサー special=ゲイボルク
+
+桜ルート\五日目\桜ルート五日目-21.ks(313): @useSpecial name=キャスター special=ルールブレイカー
+桜ルート\八日目\桜ルート八日目-09.ks(77): @useSpecial name=真アサシン special=妄想心音
+桜ルート\九日目\桜ルート九日目-19.ks(640): @useSpecial name=ライダー special=鮮血神殿
+桜ルート\九日目\桜ルート九日目-19.ks(1161): @useSpecial name=ライダー special=暗黒神殿
+桜ルート\十日目\桜ルート十日目-19.ks(179): @useSpecial name=ダークセイバー special=ダークカリバー
+桜ルート\十二日目\桜ルート十二日目-08.ks(112): @useSpecial name=バーサーカー special=十二の試練(裏)
+桜ルート\十二日目\桜ルート十二日目-08.ks(113): @useSpecial name=ライダー special=騎英の手綱
+桜ルート\十二日目\桜ルート十二日目-08.ks(114): @useSpecial name=ランサー special=ゲイボルク
+桜ルート\十二日目\桜ルート十二日目-08.ks(115): @useSpecial name=セイバー special=エクスカリバー
+桜ルート\十五日目\桜ルート十五日目-11.ks(120): @useSpecial name=真アサシン special=妄想心音
+
+*桜ルート\四日目\桜ルート四日目-10.ks(897): @useSpecial name=セイバー special=風王結界
+*桜ルート\四日目\桜ルート四日目-10.ks(904): @useSpecial name=バーサーカー special=十二の試練
+*桜ルート\四日目\桜ルート四日目-10.ks(907): @useSpecial name=ランサー special=ゲイボルク
+
+
+○真名が判明したポイント
+
+セイバールート\五日目\セイバールート五日目-09.ks(185): @knowTrueName name=ランサー
+セイバールート\六日目\セイバールート六日目-08.ks(557): @knowTrueName name=アサシン
+セイバールート\十一日目\セイバールート十一日目-00.ks(270): @knowTrueName name=セイバー
+セイバールート\十四日目\セイバールート十四日目-00.ks(989): @knowTrueName name=ギルガメッシュ
+
+*セイバールート\四日目\セイバールート四日目-05.ks(811): @knowTrueName name=バーサーカー
+*セイバールート\四日目\セイバールート四日目-05.ks(813): @knowTrueName name=ランサー
+*セイバールート\四日目\セイバールート四日目-18.ks(131): @knowTrueName name=バーサーカー
+*セイバールート\四日目\セイバールート四日目-18.ks(134): @knowTrueName name=ランサー
+
+凛ルート\十三日目\凛ルート十三日目-05.ks(179): @knowTrueName name=ギルガメッシュ
+凛ルート\十三日目\凛ルート十三日目-13.ks(740): @knowTrueName name=キャスター
+凛ルート\十四〜十六日目\凛ルート十四日目-25.ks(159): @knowTrueName name=アーチャー
+
+*凛ルート\四日目\凛ルート四日目-10.ks(547): @knowTrueName name=ランサー
+
+桜ルート\九日目\桜ルート九日目-19.ks(1158): @knowTrueName name=ライダー
+桜ルート\十五日目\桜ルート十五日目-11.ks(121): @knowTrueName name=真アサシン
+
+*桜ルート\四日目\桜ルート四日目-10.ks(908): @knowTrueName name=ランサー
+
+
+○武器が使われた(解説された)ポイント
+
+セイバールート\三日目\セイバールート三日目-19.ks(49): @useWeapon name=虎竹刀
+セイバールート\六日目\セイバールート六日目-08.ks(558): @useWeapon name=物干し竿
+セイバールート\九日目\セイバールート九日目-03.ks(612): @useWeapon name=ライダーダガー
+セイバールート\十一日目\セイバールート十一日目-00.ks(256): @useWeapon name=カリバーン
+セイバールート\十三日目\セイバールート十三日目-07.ks(423): @useWeapon name=方天戟
+セイバールート\十三日目\セイバールート十三日目-07.ks(424): @useWeapon name=ハルペー
+セイバールート\十三日目\セイバールート十三日目-07.ks(425): @useWeapon name=ヴァジュラ
+セイバールート\十三日目\セイバールート十三日目-07.ks(426): @useWeapon name=デュランダル
+セイバールート\十三日目\セイバールート十三日目-07.ks(427): @useWeapon name=ダインスレフ
+セイバールート\十三日目\セイバールート十三日目-09.ks(945): @useWeapon name=ダインスレフ
+セイバールート\十三日目\セイバールート十三日目-09.ks(946): @useWeapon name=デュランダル
+セイバールート\十三日目\セイバールート十三日目-09.ks(947): @useWeapon name=ヴァジュラ
+セイバールート\十三日目\セイバールート十三日目-09.ks(948): @useWeapon name=ハルペー
+セイバールート\十三日目\セイバールート十三日目-09.ks(949): @useWeapon name=方天戟
+セイバールート\十四日目\セイバールート十四日目-02.ks(557): @useWeapon name=グラム
+セイバールート\十五日目\セイバールート十五日目-04.ks(24): @useWeapon name=アゾット
+
+*セイバールート\四日目\セイバールート四日目-05.ks(803): @useWeapon name=大剣(無銘)
+*セイバールート\四日目\セイバールート四日目-18.ks(125): @useWeapon name=大剣(無銘)
+
+凛ルート\六日目\凛ルート六日目-11.ks(481): @useWeapon name=干将・莫耶
+凛ルート\十三日目\凛ルート十三日目-04.ks(1010): @useWeapon name=ダインスレフ
+凛ルート\十三日目\凛ルート十三日目-04.ks(1011): @useWeapon name=デュランダル
+凛ルート\十三日目\凛ルート十三日目-04.ks(1012): @useWeapon name=ヴァジュラ
+凛ルート\十三日目\凛ルート十三日目-04.ks(1013): @useWeapon name=ハルペー
+凛ルート\十三日目\凛ルート十三日目-04.ks(1014): @useWeapon name=方天戟
+
+*凛ルート\四日目\凛ルート四日目-10.ks(538): @useWeapon name=大剣(無銘)
+*凛ルート\四日目\凛ルート四日目-10.ks(539): @useWeapon name=カラドボルグ2
+
+桜ルート\八日目\桜ルート八日目-09.ks(80): @useWeapon name=ダーク
+桜ルート\十二日目\桜ルート十二日目-08.ks(101): @useWeapon name=物干し竿
+桜ルート\十二日目\桜ルート十二日目-08.ks(102): @useWeapon name=干将・莫耶
+桜ルート\十二日目\桜ルート十二日目-08.ks(103): @useWeapon name=方天戟
+桜ルート\十二日目\桜ルート十二日目-08.ks(104): @useWeapon name=ハルペー
+桜ルート\十二日目\桜ルート十二日目-08.ks(105): @useWeapon name=ヴァジュラ
+桜ルート\十二日目\桜ルート十二日目-08.ks(106): @useWeapon name=デュランダル
+桜ルート\十二日目\桜ルート十二日目-08.ks(107): @useWeapon name=ダインスレフ
+桜ルート\十二日目\桜ルート十二日目-08.ks(108): @useWeapon name=ダーク
+桜ルート\十二日目\桜ルート十二日目-08.ks(109): @useWeapon name=グラム
+桜ルート\十二日目\桜ルート十二日目-08.ks(110): @useWeapon name=カリバーン
+桜ルート\十二日目\桜ルート十二日目-08.ks(111): @useWeapon name=カラドボルグ2
+桜ルート\十五日目\桜ルート十五日目-22.ks(65): @useWeapon name=黒鍵
+桜ルート\十五日目\桜ルート十五日目-25.ks(184): @useWeapon name=アゾット
+桜ルート\十六日目\桜ルート十六日目-17.ks(654): @useWeapon name=ゼルレッチ
+
+*桜ルート\四日目\桜ルート四日目-05.ks(68): @useWeapon name=ライダーダガー
+*桜ルート\四日目\桜ルート四日目-05.ks(826): @useWeapon name=ライダーダガー
+*桜ルート\四日目\桜ルート四日目-10.ks(899): @useWeapon name=大剣(無銘)
+
+
+○マスター変更
+
+・セイバーのマスターが凛に
+凛ルート\十四〜十六日目\凛ルート十四日目-03.ks(701): @changeMasterRin
+
+・セイバーのマスターがキャスターに
+凛ルート\十一日目\凛ルート十一日目-06.ks(622): @changeMasterCaster
+
+・ライダーのマスターが桜に
+桜ルート\九日目\桜ルート九日目-19.ks(194): @changeMasterSakura
+
+・アーチャーのマスターがキャスターに
+凛ルート\十二日目\凛ルート十二日目-08.ks(569): @changeArcherMasterCaster
+
+・マスターが不明に
+凛ルート\十四〜十六日目\凛ルート十四日目-03.ks(10): @unknownMaster name=アーチャー
+
+

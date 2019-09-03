@@ -1,0 +1,293 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) TYPE-MOON All Rights Reserved.
+/		ベースメニューレイヤー
+/	※タイトルメニューやゲームメニューなど、プラグインから直接呼ばれるメニュー
+/----------------------------------------------------------------------------*/
+@if(__BASEMENULAYER_DEFINED__==0)
+@set(__BASEMENULAYER_DEFINED__=1)
+
+Scripts.execStorage("FadeLayer.tjs");
+Scripts.execStorage("subroutine.tjs");
+
+//	ベースメニューレイヤー
+class BaseMenuLayer extends FadeLayer
+{
+	var plugin;
+	var state;
+	var statestack = [];
+
+	var bgcolor	= 0x00000000;	//	透明
+
+	var current;	//	現在表示されているレイヤー
+	var layers;		//	レイヤーリスト(0:メニューレイヤー自身/1:切り替え用レイヤー)
+
+	var buttons;	//	それぞれのレイヤーに所属するボタン
+
+	var extend;		//	拡張メニュー(ロード・セーブやコンフィグなど)
+
+	var defaulttime	= 300;
+	var defaultaccel= 0;
+
+	var showstate;	//	表示状態(0:表示/1:非表示/2:非表示へ移行中)
+
+	function BaseMenuLayer(window, parent, plugin, state="")
+	{
+		super.FadeLayer(...);
+
+		current	= 0;
+		layers	= [ this, void ];
+		buttons	= [ void, void ];
+		extend	= void;
+		showstate	= 1;
+
+		this.plugin	= plugin;
+		init();
+		changeState(state);
+	}
+
+	function finalize()
+	{
+		release(extend);
+		releaseButtons(1);
+		releaseButtons(0);
+		release(buttons);
+		release(layers[1]);
+		super.finalize(...);
+	}
+
+	function init()
+	{
+		setPos(0, 0);
+		setImageSize(window.scWidth, window.scHeight);
+		setSizeToImageSize();
+		fillRect(0, 0, width, height, bgcolor);
+		opacity		= 0;
+		hitType		= htMask;
+		hitThreshold= 0;
+		visible		= true;
+		state		= "init";
+	}
+
+	function releaseButtons(eo)
+	{
+		if(buttons[eo] !== void)
+		{
+			if(typeof buttons[eo] == "Array")
+			{
+				for(var i=buttons[eo].count-1; i>=0; i--)
+					release(buttons[eo][i]);
+			}
+			else
+				invalidate buttons[eo];
+		}
+		buttons[eo]	= void;
+	}
+
+	function show(time=defaulttime, accel=defaultaccel, func=void)
+	{
+		if(showstate==1)
+		{
+			fade(255, time, accel, func);
+			defaulttime	= time;
+			defaultaccel= accel;
+			showstate	= 0;
+			window.pauseClickRepeat(true);	//	クリックリピートの一時停止
+		}
+	}
+
+	function hide(time=defaulttime, accel=defaultaccel, func=void)
+	{
+		if(showstate==0)
+		{
+			window.pauseClickRepeat(false);	//	クリックリピートの再開
+			if(func==void)
+				func	= plugin["onMenuClosed"];	//	メニューが閉じられた時の処理
+			var next = layers[(current + 1) & 1];
+			next.opacity= 0 if next!=void;
+			defaulttime	= time;
+			defaultaccel= accel;
+			showstate	= 2;	//	非表示へ移行中
+			layers[current].fade(0, time, accel, func);
+		}
+	}
+
+	function createFlipLayer()
+	{
+		return new global.MenuFlipLayer(window, parent, this, plugin);
+	}
+
+	function getNextLayer()
+	{
+		current	= (current + 1) & 1;
+		if(layers[current]==void)
+			layers[current]	= createFlipLayer();
+
+		return layers[current];
+	}
+
+	//	背景を入れ替える
+	function flipImage(storage, trans=void, time=defaulttime, accel=defaultaccel)
+	{
+		if(!inTransition)
+		{
+			inTransition	= true;
+
+			var cur = layers[current];
+			var next= getNextLayer();
+			dm("flip image to "+storage+"("+cur.name+" → "+next.name+")");
+
+			//	手前と奥の入れ替え
+//			next.opacity	= 0;
+//			next.absolute	= cur.absolute;
+//			cur.absolute	-= 1;
+
+			with(next)
+			{
+				.loadImages(storage);
+				.setSizeToImageSize();
+				.fade(255, time, accel) if .opacity==0;
+//				.opacity	= 255;
+				.visible	= true;
+			}
+			if(trans==void || trans=="crossfade")
+				cur.beginTransition(%[method:"crossfade", children:true, time:time], next);
+			else
+			{
+				if(trans=="random")
+					trans	= Rules[int(Math.random()*Rules.count)];	//	ランダム
+				cur.beginTransition(%[method:"universal", rule:trans, vague:256, children:true, time:time], next);
+			}
+		}
+	}
+
+	//	メニューが切り替わったときの処理
+	function onModified()
+	{
+		dm("on Modified.");
+		var last = (current + 1) & 1;
+		layers[last].visible	= false;	//	前のレイヤーは非表示
+	}
+
+	function onTransitionCompleted(dest, src)
+	{
+		super.onTransitionCompleted(...);
+		dm("dest:src = "+dest.name+":"+src.name);
+		dest.moveBehind(src);
+		dest.visible	= false;
+//		src.moveBehind(dest);
+//		src.visible	= false;
+//		inTransition	= false;
+	}
+
+	function turnInto(from, to)
+	{
+		//	指定の状態になったとき
+		return true;	//	処理が正しく行われ、状態が移行したらtrue
+						//	移行しない場合はfalse(backなどで状態を一つ前に戻すときなど)
+	}
+
+	function goBackTo(from, to)
+	{
+		//	指定の状態から戻ったとき
+		return true;	//	処理が正しく行われ、状態が移行したらtrue
+	}
+
+	function changeState(s)
+	{
+		//	モードが切り替わるか？
+		if(s!="" && state!=s)
+		{
+			if(turnInto(state, s))
+			{
+				statestack.add(state);
+				state	= s;
+			}
+			dispStates();
+		}
+	}
+
+	function restoreState()
+	{
+		if(statestack.count>0)
+		{
+			var ls = state;
+			state = statestack[statestack.count-1];
+			if(goBackTo(ls, state))
+				statestack.erase(statestack.count-1);
+			else
+				state	= ls;
+			dispStates();
+		}
+	}
+
+	function dispStates()
+	{
+		var str = "STATE: ";
+		var sept;
+		for(var i=0; i< statestack.count; i++)
+		{
+			str	+= sept + statestack[i];
+			sept= " → ";
+		}
+		dm(str);
+	}
+/*
+	function saveState(key)
+	{
+		sf["basemenu_state_by_"+key]		= state;
+		sf["basemenu_statestack_by_"+key]	= statestack;
+	}
+
+	function loadState(key)
+	{
+		state		= sf["basemenu_state_by_"+key];
+		statestack	= sf["basemenu_statestack_by_"+key];
+
+		turnInto("", state);	//	状態を戻す
+	}
+*/
+	function onBeforeClose()
+	{
+	}
+
+	function onClose()
+	{
+		invalidate extend if extend!==void;
+		extend	= void;
+	}
+
+	function onMouseDown(x, y, button, shift)
+	{
+		if(button == mbRight)
+		{
+			if(extend != void)
+				extend.hide();
+			else
+				hide();
+		}
+	}
+}
+
+//	フリップ用レイヤー
+class MenuFlipLayer extends FadeLayer
+{
+	var owner;
+	var plugin;
+
+	function MenuFlipLayer(win, par, owner, plugin)
+	{
+		super.FadeLayer(...);
+		name		= "フリップ用レイヤー";
+		this.owner	= owner;
+		this.plugin	= plugin;
+	}
+
+	function finalize()		{	super.finalize(...); }
+	function onButtonDown()	{	owner.onButtonDown(...); }
+	function onMouseDown()	{	owner.onMouseDown(...); }
+	function onBeforeClose(){	owner.onBeforeClose(...); }
+	function onClose()		{	owner.onClose(...); }
+	function onTransitionCompleted()	{ owner.onTransitionCompleted(...); }
+}
+
+@endif

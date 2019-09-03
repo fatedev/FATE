@@ -1,0 +1,473 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) TYPE-MOON All Rights Reserved.
+/		サウンドテストメニュー
+/----------------------------------------------------------------------------*/
+@if(__MUSICMENULAYER_DEFINED__==0)
+@set(__MUSICMENULAYER_DEFINED__=1)
+
+Scripts.execStorage("ExtendMenuLayer.tjs");
+Scripts.execStorage("subroutine.tjs");
+Scripts.execStorage("MusicListLayer.tjs");
+Scripts.execStorage("MenuTitleLayer.tjs");
+Scripts.execStorage("MenuBackButtonLayer.tjs");
+Scripts.execStorage("SliderLayer.tjs");
+
+var MusicListFile	= "音楽一覧.txt";		//	"ファイル名\t一行目\t二行目\n"
+var SEListFile		= "効果音一覧.txt";
+
+class MusicMenuLayer extends ExtendMenuLayer
+{
+	var title, back;
+
+	var music;
+	var musicfiles;
+	var musiclist;
+	var musicvolume;
+
+	var sefiles;
+	var selist;
+	var sevolume;
+
+	var playmode;
+	var bgm_playno;
+	var se_playno;
+
+	var scflags;
+
+	var mbuttons;
+	var mbuttondata	= [
+		[ 3, "music_rew",	"巻戻りボタン",		"前のBGMへ移動します。",  97, 432 ],
+		[ 1, "music_play",	"再生停止ボタン",	"BGMを再生/停止します。",175, 432 ],
+		[ 3, "music_fwd",	"早送りボタン",		"次のBGMへ移動します。", 253, 432 ],
+	];
+
+	var sbuttons;
+	var sbuttondata	= [
+		[ 3, "se_rew",		"巻戻りボタン",		"前のSEへ移動します。",  539, 432 ],
+		[ 1, "se_play",		"再生停止ボタン",	"SEを再生/停止します。", 617, 432 ],
+		[ 3, "se_fwd",		"早送りボタン",		"次のSEへ移動します。",  695, 432 ],
+	];
+
+	var repeatbuttons;
+	var repeatdata = [
+		[ 2, "music_repeat","一曲リピート",		"MODE[BGMをリピート再生]にします。",    374, 432 ],
+		[ 2, "music_allrep","全曲リピート",		"MODE[BGM全曲をリピート再生]にします。",414, 432 ],
+	];
+
+	var showed;
+
+	function MusicMenuLayer(win, par)
+	{
+		super.ExtendMenuLayer(...);
+		name	= "音楽レイヤー";
+		scflags	= win.scflags;
+
+		loadImages("music_bg");
+		setSizeToImageSize();
+		setPos(0, 0);
+
+		//	ファイルリスト取得
+		musicfiles	= loadFiles(MusicListFile, sf.playedMusic);
+		sefiles		= loadFiles(SEListFile, sf.playedSE);
+
+		//	音声再生バッファ
+		music		= new global.WaveSoundBuffer(this);
+
+		title	= new global.MenuTitleLayer(win, this, "music_title", 27, 20, 1, 11);
+		title.noclear	= true;
+
+		musiclist	= new global.MusicListLayer(win, this, musicfiles, 20, 104, 437, 320, 461);
+		musiclist.onclick	= this.changeBGM;
+		mbuttons		= createButtons(win, this, mbuttondata);
+		repeatbuttons	= createButtons(win, this, repeatdata);
+		playmode	= "repeat";
+		repeatbuttons.get("music_repeat").on();
+
+		selist		= new global.MusicListLayer(win, this, sefiles, 524, 104, 256, 320, 506);
+		selist.onclick	= this.changeSE;
+		sbuttons		= createButtons(win, this, sbuttondata);
+
+		//	音量
+		with(musicvolume = new global.SliderLayer(win, this, "musicvolume", 147, 515,
+			"music音量タブ", "", 319, 100))
+		{
+			.mode	= 3;
+			.value	= scflags.bgmVolume;
+			.readyVisible();
+		}
+
+		with(sevolume = new global.SliderLayer(win, this, "sevolume", 172, 551,
+			"music音量タブ", "", 319, 100))
+		{
+			.mode	= 3;
+			.value	= scflags.seVolume;
+			.readyVisible();
+		}
+
+		back	= new global.MenuBackButtonLayer(win, this);
+		back.noclear	= true;
+
+		//	イベント処理の入れ替え
+		var btn = mbuttons;
+		var kfunc = function(key, shift)
+		{
+			if(key==VK_UP)			parent.musiclist.focus();
+			else if(key==VK_DOWN)	parent.musicvolume.focus();
+			else
+				global.ExButtonLayer.onKeyDown(key, shift, true);
+		};
+		while(btn!=void)
+		{
+			btn.onKeyDown = kfunc incontextof btn;
+			btn	= btn.bros;
+		}
+		btn = repeatbuttons;
+		while(btn!=void)
+		{
+			btn.onKeyDown = kfunc incontextof btn;
+			btn	= btn.bros;
+		}
+		btn = sbuttons;
+		while(btn!=void)
+		{
+			btn.onKeyDown = function(key, shift)
+			{
+				if(key==VK_UP)			parent.selist.focus();
+				else if(key==VK_DOWN)	parent.musicvolume.focus();
+				else
+					global.ExButtonLayer.onKeyDown(key, shift, true);
+			} incontextof btn;
+			btn	= btn.bros;
+		}
+		back.upper	= sbuttons.get("se_fwd");
+		back.lefter	= sevolume;
+		back.onKeyDown = function(key, shift)
+		{
+			if(key==VK_UP)
+				upper.focus();	//	SEの次へボタンへフォーカス移動
+			else if(key==VK_LEFT)
+				lefter.focus();	//	効果音ボリュームへフォーカス移動
+			else if(key==VK_RIGHT || key==VK_DOWN)
+				;
+			else
+				global.MenuBackButtonLayer.onKeyDown(key, shift, true);
+		} incontextof back;
+
+		bgm_playno	= void;
+		se_playno	= void;
+	}
+
+	function finalize()
+	{
+		release(sevolume);
+		release(musicvolume);
+		release(selist);
+		release(musiclist);
+		release(sefiles);
+		release(musicfiles);
+		release(sbuttons);
+		release(repeatbuttons);
+		release(mbuttons);
+		release(back);
+		release(title);
+		super.finalize(...);
+	}
+
+	function show()
+	{
+		if(!showed)
+		{
+			showed	= true;
+			super.show(...);
+			memorizeCurrentBGM();
+			stopBGM();
+			var win = window;
+			win.bgm.owner	= this;
+			for(var i=win.se.count-1; i>=0; i--)
+				win.se[i].owner	= this;
+
+			title.resetPos();	//	毎回初期化する必要がある
+			title.open();
+			back.resetPos();
+			back.open();
+
+			musiclist.focus();
+		}
+	}
+
+	function hide()
+	{
+		if(showed)
+		{
+			showed	= false;
+			super.hide(...);
+			var win = window;
+			for(var i=win.se.count-1; i>=0; i--)
+				win.se[i].owner	= win;
+			win.bgm.owner	= win;
+			restoreBGM();
+			stopSE();
+
+			title.close();
+			back.close();
+		}
+	}
+
+	function closeThis()
+	{
+		parent.closeChild(this);
+	}
+
+	function loadFiles(file, flags)
+	{
+		var list = [];
+		var lines = [].load(file);
+		for(var i=0; i<lines.count; i++)
+		{
+			var line = lines[i];
+			if(line[0]!=";")
+			{
+				var params	= [].split("\t", line);
+				var choped	= Storages.chopStorageExt(params[0]);
+				if(flags[choped]>0)
+				{
+					//	再生されたことのあるものだけ、表示される
+					if(params[1]=="")	//	タイトルが無ければファイル名
+						params[1]	= choped;
+					dm(params[0]+": "+params[1]);
+					list.add(params);
+				}
+			}
+		}
+		return list;
+	}
+
+	function playMusic()
+	{
+		dm("play music");
+		bgm_playno	= curmusic;
+		if(curmusic>=0 && musicfiles[curmusic]!=void)
+		{
+			dm(@"playBGM(${musicfiles[curmusic][0]})");
+			playBGM(musicfiles[curmusic][0], 200, 200, false);	//	looping=trueだと戻ってこないので。
+			mbuttons.get("music_play").on();
+		}
+		else
+		{
+			var btn = mbuttons.get("music_play");
+			btn.state	= btn.state!=0 ? 1 : 0;
+		}
+	}
+
+	function stopMusic()
+	{
+		dm("stop music");
+		bgm_playno	= void;
+		stopBGM();
+		mbuttons.get("music_play").off();
+	}
+
+	function changeBGM(cur)
+	{
+		if(bgm_playno===cur)
+			stopMusic();
+		else
+			playMusic();
+	}
+
+	function playSE()
+	{
+		se_playno	= curse;
+		if(curse>=0 && sefiles[curse]!=void)
+		{
+			playSound(sefiles[curse][0]);
+			sbuttons.get("se_play").on();
+		}
+		else
+		{
+			var btn	= sbuttons.get("se_play");
+			btn.state	= btn.state!=0 ? 1: 0;
+		}
+	}
+
+	function stopSE()
+	{
+		se_playno	= void;
+		stopSound(, 100);
+	}
+
+	function changeSE(cur)
+	{
+		if(se_playno===cur)
+			stopSE();
+		else
+		{
+			stopSE();	//	一度停止する
+			playSE();
+		}
+	}
+
+	function onMouseDown(x, y, button, shift)
+	{
+		if(button == mbRight)
+			closeThis();
+	}
+
+	function onButtonDown(btn)
+	{
+		if(!showed)	return;
+		switch(btn.id)
+		{
+		case "music_rew":
+			curmusic--;
+			playMusic() if getBGMStatus()=="play";	//	再生中のみ曲を入れ替え
+			break;
+		case "music_fwd":
+			curmusic++;
+			playMusic() if getBGMStatus()=="play";	//	再生中のみ曲を入れ替え
+			break;
+
+		case "music_play":
+			playMusic();	//	停止中は再生する
+			break;
+
+		case "se_rew":
+			curse--;
+			stopSE();
+			playSE();
+			break;
+		case "se_fwd":
+			curse++;
+			stopSE();
+			playSE();
+			break;
+		case "se_play":
+			playSE();
+			break;
+
+		case "music_repeat":
+			playmode	= "repeat";
+			break;
+		case "music_allrep":
+			playmode	= "allrepeat";
+			break;
+
+		case "back":
+			closeThis();
+			break;
+		}
+	}
+
+	function onButtonUp(btn)
+	{
+		if(!showed)	return;
+		switch(btn.id)
+		{
+		case "music_play":
+			stopMusic();
+			break;
+
+		case "se_play":
+			stopSE();
+			break;
+		}
+	}
+
+	function onBGMFadeCompleted()
+	{
+	}
+
+	function onBGMStop(source)
+	{
+		dm("playmode = "+playmode+" / bgm_playno = "+bgm_playno);
+		if(bgm_playno!==void)
+		{
+			if(playmode=="allrepeat")
+			{
+				//	全曲リピートのときはどんどん再生していく
+				curmusic++;
+				playMusic();
+			}
+			else if(playmode=="repeat")
+				playMusic();
+		}
+		else
+			mbuttons.get("music_play").off();
+	}
+
+	function onSESoundBufferFadeCompleted()
+	{
+	}
+
+	function onSESoundBufferStop(id)
+	{
+		se_playno	= void;
+		if(getSEStatus()=="stop")
+			sbuttons.get("se_play").off();
+	}
+
+	function onChangeValue(tab, vol)
+	{
+		if(tab.id == "musicvolume")
+		{
+			if(scflags.bgmVolume!=vol)
+			{
+				scflags.bgmVolume = vol;
+				window.setVolume();
+			}
+		}
+		else
+		{
+			if(scflags.seVolume!=vol)
+			{
+				scflags.seVolume = vol;
+				window.setVolume();
+			}
+		}
+	}
+
+	function onMouseWheel(shift, delta, x, y)
+	{
+		if(x<selist.left-32)
+			musiclist.onMouseWheel(...);
+		else
+			selist.onMouseWheel(...);
+	}
+
+	property curmusic
+	{
+		setter(c)
+		{
+			if(c!=curmusic)
+			{
+				var mc = musicfiles.count;
+				if(mc<1)	return;
+				while(c<0)	c += mc;
+				while(c>=mc)c -= mc;
+				musiclist.current	= c;
+			}
+		}
+		getter	{ return musiclist.current; }
+	}
+
+	property curse
+	{
+		setter(c)
+		{
+			if(c!=curse)
+			{
+				var sc = sefiles.count;
+				if(sc<1)	return;
+				while(c<0)	c += sc;
+				while(c>=sc)c -= sc;
+				selist.current	= c;
+			}
+		}
+		getter	{ return selist.current; }
+	}
+}
+
+/*----------------------------------------------------------------------------/
+/	
+/----------------------------------------------------------------------------*/
+@endif

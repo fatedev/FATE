@@ -1,0 +1,214 @@
+// YesNoDialog.tjs - はい/いいえを選択するダイアログボックス
+// Copyright (C)2001-2003, W.Dee  改変・配布は自由です
+
+Scripts.execStorage("ExButtonLayer.tjs");
+
+class YesNoDialogWindow extends Window
+{
+	var yesbtn; // [はい] ボタン
+	var nobtn; // [いいえ] ボタン
+
+	var result = false; // no:false yes:true
+
+	var yesimage	= "汎用ok";
+	var yespos		= [ -107, 88 ];	//	X座標は中心からの位置
+	var noimage		= "汎用cancel";
+	var nopos		= [ 9, 88 ];	//	X座標は中心からの位置
+	var baseimage	= [ "汎用左", "汎用中", "汎用右" ];
+	var minwidth	= 252;		//	最低限の幅
+	var linespacing	= 2;		//	行間
+	var spacing		= 3;		//	ボタンの間
+	var textcolor	= 0xFFFFFF;	//	文字色
+	var shadowcolor	= 0x000000;	//	縁取りの色
+	var LRmargin	= 20;		//	左右のマージン
+
+	var	base		= [];
+
+	function YesNoDialogWindow(message, cap, defaultcancel=false)
+	{
+		super.Window();
+
+		// メインウィンドウから cursor**** の情報をとってくる
+		if(global.Window.mainWindow !== null &&
+			typeof global.Window.mainWindow.cursorDefault != "undefined")
+			this.cursorDefault = global.Window.mainWindow.cursorDefault;
+		if(global.Window.mainWindow !== null &&
+			typeof global.Window.mainWindow.cursorPointed != "undefined")
+			this.cursorPointed = global.Window.mainWindow.cursorPointed;
+
+		// 外見の調整
+		borderStyle = bsNone;
+		innerSunken = false;
+		caption = cap;
+
+		// プライマリレイヤの作成
+		add(new Layer(this, null));
+
+		//	YES,NOボタンの作成
+		add(yesbtn = new global.ExButtonLayer(this, primaryLayer, "yes", 0, yespos[1], yesimage,
+			"決定します。"));
+		add(nobtn = new global.ExButtonLayer(this, primaryLayer, "no", 0, nopos[1], noimage,
+			"キャンセルします。"));
+		yesbtn.changePushButton(true);	//	いずれも押されるだけのボタン
+		nobtn.changePushButton(true);
+
+		// プライマリのマウスカーソルを設定
+		if(typeof this.cursorDefault !== "undefined")
+			primaryLayer.cursor = cursorDefault;
+
+		//	必要な画像を読み込む
+		for(var i=0; i<baseimage.count; i++)
+		{
+			with(base[i] = new global.Layer(this, primaryLayer))
+			{
+				.loadImages(baseimage[i]);
+				.setSizeToImageSize();
+			}
+			add(base[i]);
+		}
+
+		//	文字表示に必要な幅、高さを計算
+		var lines	= [].split("\n", message);
+		var maxwidth = 0;
+		var font	= primaryLayer.font;
+		font.height	= 16;
+		for(var i=0; i<lines.count; i++)
+		{
+			var w = font.getTextWidth(lines[i]);
+			if(maxwidth < w)
+				maxwidth	= w;
+		}
+		var bs = base;
+		var ww = maxwidth + LRmargin * 2;
+		ww	= minwidth if maxwidth<minwidth;	//	最低限必要な幅に達しているか？
+		var wh = bs[0].height;
+
+		//	テキスト表示位置を決定/ウィンドウ位置、サイズ変更
+		var win = global.Window.mainWindow;
+		var wl, wt;
+		if(win !== null && win isvalid)
+		{
+			wl	= ((win.width - ww)>>1)+win.left;
+			wt	= ((win.height- wh)>>1)+win.top;
+			wl	= wl<0 ? 0 : (wl+ww>System.screenWidth ? System.screenWidth -ww : wl);
+			wt	= wt<0 ? 0 : (wt+wh>System.screenHeight? System.screenHeight-wh : wt);
+		}
+		else
+		{
+			wl	= (System.screenWidth - ww)>>1;
+			wt	= (System.screenHeight - wh)>>1;
+		}
+		setPos(wl, wt);
+		setSize(ww, wh);
+
+		wl = wt = 0;
+		with(primaryLayer)
+		{
+			.setPos(0, 0);
+			.setSize(ww, wh);
+
+			//	ベースを書き込む
+			.face	= dfBoth;
+			.copyRect(wl, wt, bs[0], 0, 0, bs[0].width, bs[0].height);
+			.copyRect(wl+ww-bs[2].width, wt, bs[2], 0, 0, bs[2].width, bs[2].height);
+			var layer = new global.Layer(this, primaryLayer);
+			layer.setSize(ww-bs[0].width-bs[2].width, bs[1].height);
+			layer.stretchCopy(0, 0, layer.width, layer.height,
+							bs[1], 0, 0, bs[1].width, bs[1].height, stNearest);
+			.copyRect(wl+bs[0].width, wt, layer, 0, 0, layer.width, layer.height);
+			invalidate layer;
+
+			//	イベントを委任する
+			.onMouseDown	= onMouseDown incontextof this;
+			.onButtonDown	= onButtonDown incontextof this;	//	ボタンイベントはWindowへ
+
+			//	文字表示開始位置を決定
+			var tl = wl + ((ww - maxwidth) >> 1);
+			if(tl<0)	tl	= 0;
+			var textheight = .font.getTextHeight(lines[0]);
+			var tt = wt + ((yespos[1] - (lines.count * (textheight+linespacing)-linespacing))>>1);
+
+			//	テキストを描画
+			for(var i=0; i<lines.count; i++)
+			{
+				.drawText(tl, tt, lines[i], textcolor, 255, true, 1024, shadowcolor, 2);
+				tt	+= textheight + linespacing;
+			}
+		}
+		dm(@"${wl},${wt},${ww},${wh}");
+
+		//	ボタンを所定の位置へ
+		yesbtn.setPos(wl+(ww>>1)+yespos[0], wt+yespos[1]);
+		nobtn.setPos(wl+(ww>>1)+nopos[0], wt+nopos[1]);
+
+		//	カーソルをボタンのところに移動させる
+		var btn = defaultcancel ? nobtn : yesbtn;
+		with(btn)
+			.setCursorPos(.width>>1, .height>>1);
+
+		setMaskRegion(128);	//	マスク設定
+		.visible	= true;
+	}
+
+	function finalize()
+	{
+		super.finalize(...);
+	}
+
+	function onMouseDown(x, y, button, shift=void)
+	{
+		if(button == mbRight)
+		{
+			//	マウス右クリックはキャンセル
+			result	= false;
+			close();
+		}
+	}
+
+	function onButtonDown(button)
+	{
+		if(button.id == "yes")
+		{
+			result	= true;		//	OK!
+			close();
+		}
+		else if(button.id == "no")
+		{
+			result	= false;	//	CANCEL
+			close();
+		}
+	}
+
+	function onKeyDown(key, shift)
+	{
+		super.onKeyDown(...);
+		if(key == VK_ESCAPE)
+		{
+			// ESC キーが押された
+			// 「いいえ」として処理
+			result = false;
+			close();
+		}
+	}
+
+	function onJoyStick(trig)
+	{
+		super.onJoyStick(...);
+		if(trig & jsTrigger2)
+		{
+			// Trigger2 = Cancel
+			result	= false;
+			close();
+		}
+	}
+}
+
+// Yes か No かはっきりさせる関数
+function askYesNo(message, caption = "確認", defaultcancel=false)
+{
+	var win = new YesNoDialogWindow(message, caption, defaultcancel);
+	win.showModal();
+	var res = win.result;
+	invalidate win;
+	return res;
+}

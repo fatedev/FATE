@@ -1,0 +1,97 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) TYPE-MOON All Rights Reserved.
+/		エクストラメニュー用ボタン
+/----------------------------------------------------------------------------*/
+@if(__EXTRAMENUBUTTONLAYER_DEFINED__==0)
+@set(__EXTRAMENUBUTTONLAYER_DEFINED__=1)
+
+Scripts.execStorage("ExButtonLayer.tjs");
+Scripts.execStorage("ComplexLinearMover.tjs");
+
+class ExtraMenuButtonLayer extends ExButtonLayer
+{
+	var underlinelayer;
+	var mover;
+	var slidetime;
+
+	function ExtraMenuButtonLayer(win, par,id,l,t,img,hint,eldest, bartype, bartop)
+	{
+		super.ExButtonLayer(...);
+		opacity	= 0;
+		visible	= true;
+		mode	= 3;
+		hitThreshold	= 0;
+
+		dm("bartype: "+bartype);
+		with(underlinelayer = new global.Layer(win, par))
+		{
+			.loadImages("ex_bar0"+bartype);
+			.setSizeToImageSize();
+			.setPos(par.width, bartop);
+			.moveBehind(this);
+			.hitThreshold	= 256;
+			.opacity	= 0;
+			.visible	= true;
+		}
+	}
+
+	function finalize()
+	{
+		release(mover);	mover	= void;
+		release(underlinelayer);	underlinelayer	= void;
+		super.finalize(...);
+	}
+
+	function open(delay)
+	{
+		dm("open: "+name);
+		//	開く時、本体は右から出て、文字の影が追いかけるように現われる
+		//	画面内に完全に入るように移動する
+		mover	= new ComplexLinearMover(this) if mover==void;
+		with(mover)
+		{
+			var w = underlinelayer.width;
+			.init(slidetime, -2);
+//			.add("left", left+w, left);
+			.add("top", top+32, top);
+			.add("opacity", 0, 255);
+			.add("underlineleft", underlinelayer.left+w, parent.width-w);
+			.add("underlineopacity", 0, 255);
+			.start(delay);
+		}
+		focusable	= true;
+	}
+
+	function close(delay)
+	{
+		dm("close: "+name);
+		//	閉じる時、出てきたときと逆に隠れる
+		//	画面外まで移動する
+		mover	= new ComplexLinearMover(this) if mover==void;
+		with(mover)
+		{
+			var w = underlinelayer.width;
+			.init(slidetime, 2, onInnerClosed);
+//			.add("left", left, left+w);
+			.add("top", top, top+32);
+			.add("opacity", 255, 0);
+			.add("underlineleft", underlinelayer.left, underlinelayer.left+w);
+			.add("underlineopacity", 255, 0);
+			.start(delay);
+		}
+		focusable	= false;
+	}
+
+	function onInnerClosed()
+	{
+		invalidate this;
+	}
+
+	property underlineleft		{ setter(l){ underlinelayer.left	= l; } }
+	property underlineopacity	{ setter(o){ underlinelayer.opacity	= o; } }
+}
+
+/*----------------------------------------------------------------------------/
+/	
+/----------------------------------------------------------------------------*/
+@endif

@@ -1,0 +1,55 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) TYPE-MOON All Rights Reserved.
+/		エクステンドメニューレイヤー
+/	※ベースメニューレイヤーが作成する、より実際の機能を果たすメニュー
+/----------------------------------------------------------------------------*/
+@if(__EXTENDMENULAYER_DEFINED__==0)
+@set(__EXTENDMENULAYER_DEFINED__=1)
+
+Scripts.execStorage("FadeLayer.tjs");
+Scripts.execStorage("subroutine.tjs");
+
+class ExtendMenuLayer extends FadeLayer
+{
+	var defaulttime	= 300;
+	var defaultaccel= 0;
+
+	function ExtendMenuLayer(win, par)
+	{
+		super.FadeLayer(...);
+	}
+
+	function finalize()
+	{
+		super.finalize(...);
+	}
+
+	function show(time=defaulttime, accel=defaultaccel)
+	{
+		fade(255, time, accel);
+		defaulttime	= time;
+		defaultaccel= accel;
+	}
+
+	function hide(time=defaulttime, accel=defaultaccel, func=void)
+	{
+//		dm("hide: "+name+" / func == void ? "+(func==void ? "true" : "false"));
+		if(func==void)
+			func	= onClose;
+		if(typeof parent.onBeforeClose != "undefined")
+			parent.onBeforeClose(this);
+		fade(0, time, accel, func);
+//		dm("func == onClose ? "+(func==onClose ? "true" : "false"));
+	}
+
+	function onClose()
+	{
+		dm("onClose: "+name);
+		invalidate this;
+	}
+}
+
+/*-----------------------------------------------------------------------------
+/	End of File
+/----------------------------------------------------------------------------*/
+@endif

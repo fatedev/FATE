@@ -1,0 +1,166 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) 1999-2002 TYPE-MOON All Rights Reserved.
+/		基本的なアニメーション(拡縮・回転)を行うレイヤー
+/----------------------------------------------------------------------------*/
+@if(__BASICANIMELAYER_DEFINED__==0)
+@set(__BASICANIMELAYER_DEFINED__=1)
+
+Scripts.execStorage("FadeLayer.tjs");
+
+class BasicAnimeLayer extends FadeLayer
+{
+	var org;	//	オリジナル画像
+
+	var grad;		//	変化量
+	var time;		//	継続時間(0以下なら半永久)
+	var starttime;	//	開始時刻
+	var base = %[];	//	ベース情報
+	var mode;		//	モード(それぞれで使用法が異なる)
+
+	var active;
+
+	function BasicAnimeLayer(win, par)
+	{
+		super.FadeLayer(...);
+	}
+
+	function finalize()
+	{
+		if(active!="")
+			System.removeContinuousHandler(this[active]);
+		releaseOriginal();
+
+		super.finalize();
+	}
+
+	function saveOriginal()
+	{
+		if(this.org==void)
+		{
+			var o = this.org	= new global.Layer(window, this);
+			o.setImageSize(imageWidth, imageHeight);
+			o.copyRect(0, 0, this, 0, 0, imageWidth, imageHeight);
+		}
+	}
+
+	function releaseOriginal()
+	{
+		invalidate org if org!=void;
+		org	= void;
+	}
+
+	//	XもしくはY軸の回転を行う
+	function setRotation(mode, rad, time=0)
+	{
+		saveOriginal();		//	元データを保存する
+
+		grad		= rad;	//	角速度(1秒あたり)
+		this.time	= time;	//	継続時間
+		starttime	= System.getTickCount();	//	開始時刻
+		this.mode	= mode;
+
+		if(mode=="y")
+		{
+			base["pos"]		= left;
+			base["size"]	= width;
+		}
+		else
+		{
+			base["pos"]		= top;
+			base["size"]	= height;
+		}
+
+		System.addContinuousHandler(rotate);
+		active	= "rotate";
+	}
+	function rotate(tick)
+	{
+		var past = tick - starttime;
+		if(past>time && time>0)
+		{
+			//	終了
+			active	= "";
+			System.removeContinuousHandler(rotate);
+			return;
+		}
+
+		//	回転
+		var o	= this.org;
+		var g	= grad * past / 1024;
+		var wh	= int(base["size"] * Math.cos(g));
+		if(wh>=0)
+		{
+			if(mode=="y")
+			{
+				left	= base["pos"] + (base["size"] - wh)>>1;
+				width	= wh;
+			}
+			else
+			{
+				top		= base["pos"] + (base["size"] - wh)>>1;
+				height	= wh;
+			}
+			stretchCopy(0, 0, width, height, o, 0, 0, o.imageWidth, o.imageHeight);
+		}
+		else
+		{
+			var l=0, t=0, w, h;
+			if(mode=="y")
+			{
+				left	= base["pos"] + (base["size"] + wh)>>1;
+				l = width	= -wh;
+				w = -l;
+				h = height;
+			}
+			else
+			{
+				top		= base["pos"] + (base["size"] + wh)>>1;
+				t = height	= -wh;
+				w = width;
+				h = -t;
+			}
+			stretchCopy(l, t, w, h, o, 0, 0, o.imageWidth, o.imageHeight);
+		}
+	}
+
+	function setRotationZ(rad, time=0)
+	{
+		saveOriginal();		//	元データを保存する
+
+		grad		= rad;	//	角速度(1秒あたり)
+		this.time	= time;	//	継続時間
+		starttime	= System.getTickCount();	//	開始時刻
+
+		System.addContinuousHandler(rotateZ);
+		active	= "rotateZ";
+	}
+	function rotateZ(tick)
+	{
+		var past = tick - starttime;
+		if(past>time && time>0)
+		{
+			//	終了
+			active	= "";
+			System.removeContinuousHandler(rotateZ);
+			return;
+		}
+
+		var v	= grad * past / 1024;
+		var sin	= Math.sin(v);
+		var cos	= Math.cos(v);
+		var tx = org.imageWidth/2;
+		var ty = org.imageHeight/2;
+		affineCopy(org, 0, 0, org.imageWidth, org.imageHeight, true,
+					cos, -sin, sin, cos, tx-tx*cos-ty*sin, ty+tx*sin-ty*cos);
+
+		//	移動         回転          移動          画像を回転させるaffine変換行列
+		//	|  1   0  0| | cos -sin 0| |  1  0  0|   |            cos           -sin 0|
+		//	|  0   1  0| | sin  cos 0| |  0  1  0| = |            sin            cos 0|
+		//	|-tx -ty  1| |   0    0 1| | tx ty  1|   | tx-txcos-tycos ty+txsin-tycos 1|
+	}
+}
+
+/*-----------------------------------------------------------------------------
+/	End of File
+/----------------------------------------------------------------------------*/
+@endif

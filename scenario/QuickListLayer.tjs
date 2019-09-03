@@ -1,0 +1,322 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) 1999-2002 TYPE-MOON All Rights Reserved.
+/		クイックセーブのリストを表示する
+/----------------------------------------------------------------------------*/
+@if(__QUICKLISTLAYER_DEFINED__==0)
+@set(__QUICKLISTLAYER_DEFINED__=1)
+
+Scripts.execStorage("ExtendMenuLayer.tjs");
+Scripts.execStorage("SaveLoadMenuLayer.tjs");
+
+class QuickListLayer extends ExtendMenuLayer
+{
+	var bgcolor	= 0xA0000000;
+	var datecolor	= 0xE3E8BA;
+	var textcolor	= 0xBAE3E8;
+	var shadowcolor	= 0x000000;
+	var shadowlevel	= 192;
+	var shadowwidth	= 1;
+	var basex	= 40;
+	var basey	= 80;
+	var interval= 32;
+	var spacing	= 1;
+	var buttonstart	= 540;
+	var datacount	= 12;
+	var savebuttonimage	= "save_save";
+	var loadbuttonimage	= "load_load";
+	var deletebuttonimage="qs_delete";
+	var baseimage		= "qs_base";
+	var headimage		= "qs_f";
+
+	var arearight, areaheight;
+
+	var stocker;
+	var savebutton;
+	var loadbutton;
+	var deletebutton;
+	var backbutton;
+
+	var lasttime;
+	var lastaccel;
+
+	var lastoperation;
+
+	var _current;
+	var target;
+
+	var showed;
+
+	function QuickListLayer(win, par)
+	{
+		super.ExtendMenuLayer(...);
+
+		win.lockSnapshot();	//	スナップショットを撮る
+
+		name	= "クイックセーブリスト";
+		var w, h;
+		setSize(w = win.scWidth, h = win.scHeight);
+		fillRect(0, 0, w, h, bgcolor);	//	透明
+//		hint	= "ボタンを押してセーブロード削除を行ってください。\n項目をクリックすることでもセーブができます。";
+
+		stocker	= [];
+		stocker[0]	= new global.Layer(window, this);
+		with(stocker[1] = new global.Layer(window, this))
+		{
+			.loadImages(baseimage);
+			areaheight	= .imageHeight;
+		}
+
+		//	ボタンを作成
+		var bx = buttonstart;
+		var by = basey;
+		var sw, lw;
+/*		var keydownfunc = function(key, shift)
+		{
+			//	Qが押されたらメニューを閉じる
+			if(key == #"Q")
+				parent.closeThis();
+			else
+				global.ExButtonLayer.onKeyDown(key, shift);
+		};
+*/		for(var i=0; i<datacount; i++)
+		{
+			var sb, lb, db;
+			if(savebutton==void)
+			{
+				sb = savebutton = new ExButtonLayer(win, this, "save-"+i, bx, by,
+					savebuttonimage, "");
+				sw = savebutton.width + spacing;
+				lb = loadbutton = new ExButtonLayer(win, this, "load-"+i, bx+sw, by,
+					loadbuttonimage, "");
+				lw = loadbutton.width + spacing;
+				db = deletebutton=new ExButtonLayer(win, this, "delete-"+i, bx+sw+lw, by,
+					deletebuttonimage, "");
+			}
+			else
+			{
+				sb = savebutton.add("save-"+i, bx, by, savebuttonimage, "");
+				lb = loadbutton.add("load-"+i, bx+sw, by, loadbuttonimage, "");
+				db = deletebutton.add("delete-"+i, bx+lw+sw, by, deletebuttonimage, "");
+			}
+			sb.changePushButton(true);
+			lb.changePushButton(true);
+			db.mode=3;
+			db.readyVisible();
+/*			sb.onKeyDown	= keydownfunc incontextof sb;
+			lb.onKeyDown	= keydownfunc incontextof lb;
+			db.onKeyDown	= keydownfunc incontextof db;
+*/			by += interval;
+		}
+		with(backbutton	= new ExButtonLayer(win, this, "back", 637, 481, "conf_back","戻ります。"))
+		{
+			.mode	= 3;
+			.readyVisible();
+		}
+
+		font.height	= 16;
+		lastoperation	= "";
+	}
+
+	function finalize()
+	{
+		QuickList	= void if typeof global.QuickList != "undefined";
+		invalidate backbutton;
+		invalidate deletebutton;
+		invalidate loadbutton;
+		invalidate savebutton;
+		invalidate stocker[1];
+		invalidate stocker[0];
+
+		if(lastoperation!="load")		//	最後に処理したのが"load"以外であれば、
+			window.unlockSnapshot();	//	スナップショットを捨てる
+			//	Loadの時はfreeSnapshot()ですべて破棄されるので、unlockしてはいけない
+
+		super.finalize(...);
+	}
+
+	function show(time, accel)
+	{
+		if(!showed)
+		{
+			showed	= true;
+			updateList();
+			super.show(...);
+			delayFocus(50, savebutton);
+		}
+	}
+
+	function hide()
+	{
+		if(showed)
+		{
+			showed	= false;
+			super.hide(...);
+		}
+	}
+
+	function getDataNo(no)
+	{
+		no	= window.numBookMarks - 1 - no;
+		dm("get data no: "+no);
+		return no;	//	セーブ番号->ファイル番号の変換も
+	}
+
+	function updateList()
+	{
+		//	現在のデータを表示
+		for(var i=0; i<12; i++)
+			drawQuickData(i, true);
+	}
+
+	function drawQuickData(no, update=false)
+	{
+		if(no<0 || no>=datacount)	return;
+		var win = window;
+		var spc = spacing;
+		var bx = basex;
+		var by = basey + no*interval;
+//		dm(@"${no}: ${bx}, ${by}");
+		var sh = font.height+spc*2;
+		var dno = getDataNo(no);
+		var de = true;
+		if( dno===void || dno<0)
+			de = false;	//	データが存在しない
+		if(win.bookMarkNames[dno]=="" && win.bookMarkDates[dno]=="" &&
+			!Storages.isExistentStorage(win.getBookMarkFileNameAtNum(dno)))
+			de	= false;
+
+		//	枠(番号)
+		var tstart, tsize = stocker[1].imageWidth;
+		with(stocker[0])
+		{
+			.loadImages(headimage+(no+1));
+			.width	= .imageWidth\2;
+			tstart = bx+.width;
+			fillRect(bx, by, .width, areaheight, bgcolor);	//	消去しておく
+			pileRect(bx, by, stocker[0], current==no ? .width : 0, 0, .width, .imageHeight);
+		}
+
+		if(update)
+		{
+			//	枠
+			fillRect(tstart, by, tsize, areaheight, bgcolor);	//	消去しておく
+			pileRect(tstart, by, stocker[1], 0, 0, tsize, areaheight);
+			arearight	= tstart + tsize;
+
+			//	日付
+			var date = de ? win.bookMarkDates[dno]:"----/--/-- --:--";
+			var pos = tstart + tsize - font.getTextWidth(date) - spc*2;
+			drawText(pos, by+spc, date, datecolor,,,shadowlevel,shadowcolor, shadowwidth);
+
+			//	タイトル
+			setClip(tstart, by+spc, pos-bx, font.height);
+			var title = de ? win.bookMarkNames[dno]:"NO DATA";
+			drawText(tstart+spc, by+spc, title, textcolor,,,shadowlevel,shadowcolor, shadowwidth);
+			setClip(0, 0, width, height);	//	クリッピング解除
+
+			//	ボタン
+			var lb = loadbutton.get("load-"+no);	//dm("load-"+no+": "+lb);
+			var db = deletebutton.get("delete-"+no);//dm("delete-"+no+": "+db);
+			if(de)
+			{
+				lb.enabled	= true if lb!=void;
+				db.enabled	= true if db!=void;
+			}
+			else
+			{
+				lb.enabled	= false if lb!=void;
+				db.enabled	= false if db!=void;	//	ボタンを無効化
+			}
+		}
+	}
+
+	function onMouseMove(x, y)
+	{
+//		dm(@"${x} - (${basex}, ${arearight}) / ${y} - ${basey}, ${interval}, ${areaheight}");
+		if(x<basex || x>arearight || y<basey || ((y - basey) % interval) > areaheight)
+			current	= -1;	//	範囲外
+		else
+			current	= int((y - basey) / interval);	//	範囲内
+	}
+
+	function onMouseDown(x, y, button, shift)
+	{
+		if(!showed)	return;	//	受付状態になければ何もしない
+		if(button == mbLeft)
+		{
+			if(current>=0)
+			{
+				//	ダブルクリック→セーブ
+				window.saveBookMarkWithAsk(getDataNo(current), closeThis);
+				drawQuickData(current, true);
+//				lastoperation	= "save";
+			}
+		}
+		else if(button == mbRight)
+		{
+			parent.closeChild(this);
+		}
+	}
+
+	function onButtonDown(btn)
+	{
+		if(!showed)	return;	//	受付状態になければ何もしない
+		var param = [].split("-", btn.id);
+		target	= +param[1];
+		switch(param[0])
+		{
+		case "save":
+			window.saveBookMarkWithAsk(getDataNo(target), closeThis);
+			break;
+
+		case "load":
+			window.loadBookMarkWithAsk(getDataNo(target), onLoaded);
+			break;
+
+		case "delete":
+			window.eraseBookMarkWithAsk(getDataNo(target), updateData);
+			break;
+		case "back":
+			closeThis();
+			break;
+		}
+//		lastoperation	= param[0];
+	}
+
+	function updateData()
+	{
+		drawQuickData(target, true);
+	}
+
+	function closeThis()
+	{
+		parent.closeChild(this);
+	}
+
+	function onLoaded()
+	{
+		lastoperation	= "load";
+	}
+
+	property current
+	{
+		setter(c)
+		{
+			if(_current!=c)
+			{
+				if(c>=datacount)	return;	//	範囲外
+				var last	= _current;
+				dm(_current+" -> "+c);
+				_current	= c;
+				drawQuickData(last) if last>=0;
+				drawQuickData(_current) if _current>=0;
+			}
+		}
+		getter	{ return _current; }
+	}
+}
+
+/*-----------------------------------------------------------------------------
+/	End of File
+/----------------------------------------------------------------------------*/
+@endif

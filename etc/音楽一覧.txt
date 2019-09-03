@@ -1,0 +1,40 @@
+bgm01.ogg	into the night
+bgm03.ogg	日差しの中で
+bgm04.ogg	穏やかな毎日
+bgm05.ogg	優しい風景
+bgm06.ogg	茜色の街
+bgm07.ogg	笑顔に囲まれて
+bgm08.ogg	真夜中の狭間
+bgm35.ogg	彷徨う影
+bgm09.ogg	悪夢
+bgm10.ogg	運命の渦
+bgm43.ogg	運命の渦2
+bgm11.ogg	激突する魂
+bgm12.ogg	破滅の足音
+bgm13.ogg	突破口
+bgm14.ogg	丘の上の教会
+bgm15.ogg	追憶の彼方
+bgm16.ogg	消えない想い
+bgm17.ogg	二人の時間
+bgm40.ogg	抱擁
+bgm33.ogg	抱擁2
+bgm19.ogg	求め合う心
+bgm24.ogg	疾風の剣士
+bgm20.ogg	約束された勝利の剣
+bgm21.ogg	黄金の王
+bgm23.ogg	エミヤ
+bgm34.ogg	光と闇
+bgm25.ogg	この世全ての悪
+bgm45.ogg	新たな夜明け
+bgm46.ogg	新たな夜明け2
+bgm41.ogg	移りゆく季節
+bgm26.ogg	移りゆく季節2
+bgm38.ogg	THIS ILLUSION (Fate ver.)
+bgm49.ogg	THIS ILLUSION (inst.)
+bgm18.ogg	THIS ILLUSION (piano ver.)
+bgm27.ogg	days (Fate ver.)
+bgm42.ogg	静かなる声
+bgm29.ogg	嵐の予感
+bgm39.ogg	ローレライ (「Die Lorelei」Philipp Friedrich Silcher)
+bgm44.ogg	今日の食卓
+bgm28.ogg	extra

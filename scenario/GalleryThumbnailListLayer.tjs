@@ -1,0 +1,1730 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) TYPE-MOON All Rights Reserved.
+/		ギャラリーサムネール
+/----------------------------------------------------------------------------*/
+@if(__GALLERYTHUMBNAILLAYER_DEFINED__==0)
+@set(__GALLERYTHUMBNAILLAYER_DEFINED__=1)
+
+Scripts.execStorage("FadeLayer.tjs");
+Scripts.execStorage("GalleryImageLayer.tjs");
+Scripts.execStorage("MenuTitleLayer.tjs");
+Scripts.execStorage("MenuBackButtonLayer.tjs");
+
+var	MaxImagePerPage	= 16;	//	1ページあたりに表示できるサムネールの数
+var	ImageSidewaysCount	= 4;//	横の枚数
+var	ImageLengthwiseCount= 4;//	縦の枚数
+var	ThumbnailWidth	= 120;	//	サムネールの幅
+var	ThumbnailHeight	= 90;	//	サムネールの高さ
+var	ThumbnailSpacing= 8;	//	サムネール間の隙間
+var	ThumbnailLeft	= 24;
+var	ThumbnailTop	= 79;
+var	SnapingLimit	= 20;	//	スナップ化するために必要な移動量
+var	ThumbExt		= "_thumb";	//	サムネール画像名にするための付加文字列
+var	GalleryMasterFile	= "ギャラリー.txt";
+var	ThumbnailBorder		= 4;	//	スナップの枠幅
+var	ThumbnailBorderColor= 0xFFFFFFFF;	//	枠の色
+var	nonDisplayedThumbnail	= "nondisplayed";	//	表示されたことの無い画像を示すサムネール
+
+class GalleryThumbnailListLayer extends FadeLayer
+{
+	var owner;
+	var route;
+
+	var title, back;
+
+	var pagebuttons;
+//	var pagebuttondata = [ 17, 495, 39, "cgページボタン" ];
+	var pagebuttondata = [ 40, 488, 48, "gl_pagebutton" ];
+	var defaultbuttondata	= [ "default", 558, 479, "gl_default", "並びをデフォルト状態に戻します。" ];
+	var defaultbutton;
+
+	var imagenames;		//	画像名[ページ][画像番号]
+	var pagecount;		//	全ページ数
+	var _currentpage;	//	現在のページ
+	var lastpage;		//	直前のページ
+
+	var snaps;				//	スナップレイヤー[スナップ番号とその前後位置]
+	var snapinfo;			//	スナップ情報[スナップ番号] ※表示後正確な情報でなくなる
+	var issnapappearring;	//	スナップ出現処理中か？
+
+	var imagetemps;	//	サムネール画像を持っておくレイヤー[サムネール番号]
+	var loadcount;	//	読み込み済みサムネールの数
+	var firsttime;
+
+	var isimageloading;	//	サムネール画像読み込み処理中か？
+	var drawtime=200, drawaccel=-2;	//	サムネール画像出現の時間など
+	var transtime=800;	//	トランジションの切り替え時間
+
+	var catchno;		//	キャッチしているサムネール番号(-1はキャッチしていない)
+	var lastx, lasty;	//	直前のマウス座標
+	var ismoving;		//	スナップ移動中か？
+	var iswaggle;		//	マウスがクリック中に移動してしまった(ドラッグ状態になった)
+
+	var _enterno;		//	現在カーソルが乗っている項目
+	var lastenterno;	//	直前にカーソルが乗っていた項目
+
+	var tmplayer;		//	画像読み込み用のレイヤー
+	var nondisplayed;	//	表示されたことの無い画像であることを示すサムネール
+
+	var image;
+
+	var defaulttime	= 400, defaultaccel= 0;
+	var thumbbgcolor	= 0xFF142E59;
+
+	var showed;
+
+	var	isOpenGroupPage;//	グループページを開いているか？
+
+	var _curimage;	//	現在選んでいるサムネール
+	var lastimage;	//	直前に選んでいたサムネール
+	var cursorlayer;		//	カーソルレイヤー
+
+	var openImageNo;	//	開いた時の画像
+
+	function GalleryThumbnailListLayer(win, par, route="")
+	{
+		super.FadeLayer(...);
+		name	= "ギャラリーサムネールレイヤー";
+
+		loadImages("gallery_bg");
+		setSizeToImageSize();
+		setPos(0, 0);
+		face	= dfMain;
+
+		tmplayer	= new global.Layer(win, this);
+//		buttons		= createButtons(win, this, buttondata);
+		imagetemps	= [];
+		catchno		= -1;
+		_enterno	= -1;
+		lastenterno	= -1;
+		with(cursorlayer = new global.Layer(win, this))
+		{
+			.loadImages("gl_thumbcursor");
+			.setSizeToImageSize();
+		}
+
+		var dbd = defaultbuttondata;
+		with(defaultbutton = new global.ExButtonLayer(win, this, dbd[0], dbd[1], dbd[2],
+			dbd[3], dbd[4]))
+		{
+			.mode	= 4;
+			.readyVisible();
+		}
+
+//		opacity		= 255;
+		this.owner	= par;
+		setRoute(route) if route != "";
+
+		focusable	= true;	//	サムネール選択のため、フォーカスを得る
+	}
+
+	function finalize()
+	{
+		release(nondisplayed);
+		releaseRoute();
+		if(imagetemps!=void)
+		{
+			for(var i=0; i<imagetemps.count; i++)
+			{
+				release(imagetemps[i].layer);
+				if(imagetemps[i].drawer!==void && imagetemps[i].drawer isvalid)	//	描画中なら
+					invalidate imagetemps[i].drawer;
+				release(imagetemps[i]);
+			}
+			invalidate imagetemps;
+		}
+//		release(buttons);
+		release(defaultbutton);
+		release(cursorlayer);
+		release(tmplayer);
+		super.finalize(...);
+	}
+
+	function releaseRoute()
+	{
+		stop_appearsnap();
+		release(snaps);
+		release(pagebuttons);
+	}
+
+	function setRoute(route)
+	{
+		if(route=="")	return;	//	正しい指定でなければ設定しない
+		//	解放しとく
+		releaseRoute();
+		dm("open: "+route);
+
+		window.noFlipCursor	= true;	//	「キーの入力がある毎にカーソルを端に移動させる」をしない
+
+		//	backボタンのメッセージ送り先をサムネールレイヤーに
+		parent.back.target	= this;
+		parent.back.onKeyDown	= function(key, shift)
+		{
+			if(key == VK_UP)
+			{
+				//	Backボタン上で上キーを押したら、現在のページに対応したページボタンへ移動
+				with(target)
+				{
+					if(.currentpage<.pagecount)
+						.pagebuttons.get("page"+.currentpage).focus();
+					else
+						.focus();	//	サムネールリストへ
+				}
+			}
+			else if(key == VK_DOWN || key == VK_LEFT || key == VK_RIGHT)
+			{
+				//	Backで下を押しても、サムネールへは移動しない
+				//	左右も無効
+			}
+			else
+				global.MenuBackButtonLayer.onKeyDown(key, shift, true);
+		} incontextof parent.back;
+
+		//	消去しておく(テスト中のみ)
+//		sf.imagenames	= void;
+
+		//	ギャラリーデータの読み込み
+		this.route	= route;
+		if(sf.imagenames == void || sf.imagenames[route] == void)
+		{
+			loadGalleryAlignment(route);	//	ファイルから読み込む
+		}
+		else
+		{
+			imagenames	= sf.imagenames[route];
+			pagecount	= sf.imagecount[route];
+		}
+
+		//	ページ数が決まったのでページボタンを作成する
+		var win = window;
+		var pgimg = pagebuttondata[3];
+		var l = pagebuttondata[0], t = pagebuttondata[1], step = pagebuttondata[2];
+		var btns, btn;
+		for(var pg=0; pg<pagecount; pg++)
+		{
+			if(btns===void)
+				btn = btns = new ExButtonLayer(win, this, "page"+pg, l, t, pgimg,
+					"ページNo."+pg+"へ移動します。");
+			else
+				btn = btns.add("page"+pg, l, t, pgimg, "ページNo."+pg+"へ移動します。");
+
+			//	次の場所へ移動
+			l += step;
+
+			with(btn)
+			{
+				.mode		= 2;
+				.focusable	= true;
+				.visible	= true;
+				.opacity	= 255;
+				.pgno		= pg;
+				.onKeyDown	= function(key, shift)
+				{
+					dm("key down: "+key);
+					with(parent)
+					{
+						if(key==VK_UP)
+						{
+							//	サムネールへ
+							.focus();
+						}
+						else if(key==VK_DOWN)
+						{
+							//	backボタンへ
+							.parent.back.focus();	// this->ThumbList->Gallery->Back
+						}
+						else if(key==VK_LEFT)
+						{
+							//	前のボタンへ(先頭なら最後へ)
+							var prev = pgno<1 ? (.pagecount-1) : (pgno-1);
+							.pagebuttons.get("page"+prev).onKeyDown(VK_RETURN);
+						}
+						else if(key==VK_RIGHT)
+						{
+							//	次のボタンへ(最後なら先頭へ)
+							var next = pgno>=.pagecount-1 ? 0 : (pgno+1);
+							.pagebuttons.get("page"+next).onKeyDown(VK_RETURN);
+						}
+						else
+							global.ExButtonLayer.onKeyDown(key, shift, true);
+					}
+				} incontextof btn;
+			}
+		}
+		pagebuttons	= btns;
+//		buttons.get("nextpage").left	= btn.left + pagebuttondata[2];
+
+		//	状態を読み出す
+		sf.gallerysnap = %[] if sf.gallerysnap===void;
+		sf.gallerysnap[route] = [] if sf.gallerysnap[route]===void;
+		snapinfo	= sf.gallerysnap[route];
+
+		//	状態を再現する
+		snaps	= [];
+		start_appearsnap();
+
+		//	画面を更新
+//		firsttime	= true;
+/*		_currentpage= -1;
+		currentpage	= 0;	//	直近のページを記憶しておく？
+*/		_currentpage= 0;
+		draw();
+
+		catchno	= -1;
+		ismoving= false;
+
+		pagebuttons.get("page"+currentpage).on();
+		super.show(defaulttime, defaultaccel);
+		showed	= true;
+		opacity	= 1;
+		focus();	//	フォーカスを持っておく
+	}
+
+	function loadGalleryAlignment(route)
+	{
+		if(route=="")
+			return false;
+
+		//	マスターから読み込む
+		var lines		= [].load(route+GalleryMasterFile);
+		var page		= 0;
+		imagenames		= [];
+		imagenames[page]= [];
+		var imgcnt = 0;
+		var groups	= [];
+		var groupcnt = 0;
+		for(var i=0; i<lines.count; i++)
+		{
+			if(lines[i][0]!='#')
+			{
+				if(lines[i][0]=='-' && lines[i][1]=='-')
+				{
+					dm("next page.");
+					page++;		//	ページ切り替え
+					imgcnt	= 0;
+					imagenames[page]	= [];
+				}
+				else
+				{
+					dm("load image: "+lines[i]);
+					//	ギャラリー画像名
+					var imgs	= [].split("\t", lines[i],, true);
+					if(imgs.count>1)
+					{
+						//	グループを含んでいる
+						imagenames[page][imgcnt] = groupcnt;
+						groups[groupcnt++]	= imgs;
+					}
+					else
+						imagenames[page][imgcnt] = imgs[0];	//	通常の画像
+					imgcnt++;
+					if(imgcnt>=MaxImagePerPage)
+					{
+						page++;
+						imgcnt	= 0;
+						imagenames[page]	= [];
+					}
+				}
+			}
+		}
+		pagecount	= imagenames.count;
+
+		//	Level.1のページ数を記録
+		sf.imagecount = %[] if sf.imagecount===void;
+		sf.imagecount[route] = pagecount;
+
+		//	通常の範囲外のページを登録
+		for(var i=0; i<groupcnt; i++)
+			imagenames.add(groups[i]);
+
+		return true;
+	}
+
+	function resetAlignment()
+	{
+		//	ギャラリーを元に戻す
+		dm("resetAlignment: route = "+route);
+		sf.imagenames	= %[] if sf.imagenames == void;
+		if(loadGalleryAlignment(route))	//	ギャラリーデータから読み込む
+			sf.imagenames[route]	= void;	//	リセット
+		start_loadimage();				//	再表示
+	}
+
+	function hide()
+	{
+		stop_appearsnap();	//	スナップ表示を止める
+
+		//	backボタンのメッセージ送り先を親に戻す
+		parent.back.target		= parent;
+		parent.back.onKeyDown	= global.MenuBackButtonLayer.onKeyDown;
+
+		//	状態を保存する
+		saveGalleryState();
+
+		//	閉じる(ギャラリー選択レイヤーへトランジション)
+		showed	= false;
+		super.hide(defaulttime, defaultaccel);
+		release(image);
+		image	= void;
+
+		window.noFlipCursor	= false;	//	「キーの入力がある毎にカーソルを端に移動させる」を有効
+
+		parent.onThumbnailListClosed();	//	閉じたことを親へ知らせる
+	}
+
+	function saveGalleryState()
+	{
+		if(snapinfo!=void)
+			snapinfo.clear();
+		else
+			snapinfo	= [];
+		for(var i=0; i<snaps.count; i++)
+			snapinfo[i]	= snaps[i].getInfo();
+
+		if(sf.imagenames == void)
+			sf.imagenames	= %[];	//	ギャラリー画像一覧が存在しなければ作成
+//		dm("sf.imagenames = "+sf.imagenames);
+		if(sf.imagenames[route] == void)
+			sf.imagenames[route]	= imagenames;	//	初めて指定のギャラリーを読み込んだときだけ作成
+			//	2回目以降は最初の呼び出し時に参照しているので、保存する必要は無い
+//		dm("sf.imagenames["+route+"] = "+sf.imagenames[route]);
+	}
+
+	function moveTop(snap)
+	{
+		//	指定のスナップを最前に移動
+		var scnt = snaps.count-1;
+		for(var i=0; i<scnt; i++)
+		{
+			if(snaps[i] == snap)
+			{
+				snap.moveBefore(snaps[snaps.count-1]);	//	最前へ移動
+				snaps.erase(i);				//	今の位置は削除
+				snaps[snaps.count]	= snap;	//	最後に追加
+				break;
+			}
+		}
+	}
+
+	function start_appearsnap()
+	{
+		if(!issnapappearring)
+		{
+			System.addContinuousHandler(appearsnap_handler);
+			issnapappearring	= true;
+		}
+	}
+
+	function appearsnap_handler()
+	{
+		//	ひまなときにスナップを作成する
+		if(snaps.count<snapinfo.count)
+		{
+			var layer;
+			for(var i=0; i<imagetemps.count; i++)
+			{
+				if(imagetemps[i].imagefile == snapinfo[snaps.count].file)
+				{
+					layer	= imagetemps[i].layer;
+					break;
+				}
+			}
+			if(layer==void)
+			{
+				tmplayer.loadImages(snapinfo[snaps.count].file+ThumbExt);
+				layer	= tmplayer;
+			}
+			snaps[snaps.count]	= new MovableThumbnailLayer(window, this, snapinfo[snaps.count], layer);
+		}
+		else
+			stop_appearsnap();
+	}
+
+	function stop_appearsnap()
+	{
+		if(issnapappearring)
+		{
+			System.removeContinuousHandler(appearsnap_handler);
+			issnapappearring	= false;
+		}
+	}
+
+	function start_loadimage()
+	{
+		stop_loadimage();
+
+		if(!isimageloading)
+		{
+			loadcount	= 0;
+			for(var i=0; i<imagetemps.count; i++)
+				imagetemps[i].drawstatus	= "now loading";
+			System.addContinuousHandler(loadimage_handler);
+			isimageloading	= true;
+		}
+	}
+
+	function loadimage_handler()
+	{
+		if(imagetemps[loadcount]==void)
+		{
+			//	読み込み用レイヤーが無いなら作る
+			imagetemps[loadcount]		= %[];
+			imagetemps[loadcount].layer	= new global.Layer(window, this);
+		}
+		with(imagetemps[loadcount])
+		{
+			var fname = getImageName(currentpage, loadcount);
+			var tw = ThumbnailWidth, th = ThumbnailHeight;
+			.enterOk = false;
+			if(fname=="")
+			{
+				//	画像が無いよ
+				.layer.setImageSize(tw, th);
+				.layer.fillRect(0, 0, tw, th, thumbbgcolor);
+				.isVisible	= false;
+			}
+			else if(!sf.displayedPictures[fname])
+			{
+				//	表示されたことの無い画像だよ
+				if(nondisplayed==void)
+				{
+					nondisplayed	= new global.Layer(window, this);
+					nondisplayed.loadImages(nonDisplayedThumbnail);
+				}
+				.layer.setImageSize(tw, th);
+				.layer.copyRect(0, 0, nondisplayed, 0, 0, tw, th);
+				.isVisible	= false;
+			}
+			else
+			{
+				//	画像はあるし、表示されたこともあるよ
+				.layer.loadImages(fname+ThumbExt);	//	画像
+				.isVisible	= true;	//	本体表示可能
+				.enterOk	= true;
+			}
+			.imagefile	= fname;
+			.drawstatus	= "start drawing";
+			.drawer	= new ThumbnailDrawer(this, loadcount, drawtime, drawaccel);
+		}
+		loadcount++;
+
+		if(loadcount>=MaxImagePerPage)
+		{
+			//	十分な数読み込んだら終了
+			stop_loadimage();
+			return;
+		}
+	}
+
+	function stop_loadimage()
+	{
+		if(isimageloading)
+		{
+			System.removeContinuousHandler(loadimage_handler);
+			isimageloading	= false;
+			if(firsttime)
+			{
+				//	切り替わり初回なら、オーナーからこのレイヤーへトランジションする
+				owner.beginTransition(%[method:"crossfade",children:true,time:transtime], this);
+				firsttime	= false;
+			}
+
+			//	現在のイメージが選択できないもので、かつフォーカスを得ていたら
+			if((curimage<0 || !imagetemps[curimage].enterOk) && focused)
+				searchImage(+1, 0);	//	先頭から選択できるものを探す
+		}
+	}
+
+	function drawImage(no)
+	{
+		var tw = ThumbnailWidth, th = ThumbnailHeight;
+		var spc = ThumbnailSpacing;
+		var l = ThumbnailLeft + (no % ImageSidewaysCount) * (tw + spc);
+		var t = ThumbnailTop + int(no / ImageLengthwiseCount) * (th + spc);
+		var fname = getImageName(currentpage, no);
+		with(imagetemps[no])
+		{
+			if(.imagefile != fname)
+			{
+				.enterOk	= false;
+				if(fname===void)
+				{
+					dm("no image. : "+fname);
+					//	画像が無い場所
+					.layer.setImageSize(tw, th);
+					.layer.fillRect(0, 0, tw, th, thumbbgcolor);
+					.isVisible	= false;
+				}
+				else if(!sf.displayedPictures[fname])
+				{
+					dm("not displayed. : "+fname);
+					//	画像はあるんだけど、まだ見ていないからダメなとこ
+					if(nondisplayed==void)
+					{
+						nondisplayed	= new global.Layer(window, this);
+						nondisplayed.loadImages(nonDisplayedThumbnail);
+						nondisplayed.setSizeToImageSize();
+					}
+					.layer.setImageSize(tw, th);
+					.layer.copyRect(0, 0, nondisplayed, 0, 0, tw, th);
+					.isVisible	= false;
+				}
+				else
+				{
+					dm("load image : "+fname);
+					//	適切な画像が読み込まれていないなら読み込む
+					.layer.loadImages(fname+ThumbExt);
+					.isVisible	= true;
+					.enterOk	= true;
+				}
+				.imagefile	= fname;
+				.drawstatus	= "end drawing";
+			}
+
+			//	描画
+			face	= dfMain;
+			copyRect(l, t, .layer, 0, 0, tw, th);
+
+			//	カーソルがあるか？
+			if(.enterOk && no === curimage)
+				pileRect(l, t, cursorlayer, 0, 0, tw, th, 255);
+		}
+	}
+
+	function draw()
+	{
+		//	読み込みレイヤーが員数に達していないなら作成
+		var its = imagetemps;
+		for(var i=its.count; i<MaxImagePerPage; i++)
+		{
+			its[i]		= %[];
+			its[i].layer= new global.Layer(window, this);
+			its[i].imagefile	= -1;
+		}
+
+		//	描画する
+		for(var i=0; i<MaxImagePerPage; i++)
+			drawImage(i);
+	}
+
+	function getImageName(page, no)
+	{
+		var fname	= imagenames[page][no];
+		if(typeof fname == "Integer")					//	グループの入り口画像だったら
+			fname	= imagenames[pagecount+fname][0];	//	グループ先頭の画像を表示
+
+		dm(@"get image no: ${page}, ${no} = ${fname}");
+		return fname;
+	}
+
+	function getNextImage(fname)
+	{
+		var ins	= imagenames;
+		var nums= getImageNumbers(fname);
+		var p	= nums[0];
+		var	n	= nums[1];
+		dm(@"${p}, ${n} (${pagecount}) -> ");
+		var	fname;
+		for(var cnt=0; cnt<256; cnt++)
+		{
+			if(n<ins[p].count-1)
+				n++;
+			else if(p<pagecount-1)
+				p++, n=0;
+			else if(p<pagecount)
+				p=n=0;
+			else
+			{
+				//	グループが埋め込まれている場所を探す
+				var	ns	= searchGroupEntrance(p - pagecount);
+				if(ns[1]<ins[ns[0]].count-1)
+					p = ns[0], n = ns[1] + 1;
+				else if(ns[0]<pagecount - 1)
+					p = ns[0] + 1, n = 0;
+				else
+					p = n = 0;
+			}
+			fname	= ins[p][n] if p<ins.count && n<ins[p].count;
+			if(typeof fname == "Integer")
+			{
+				var pg = fname+pagecount, no = 0;
+				var cnt = ins[pg].count;
+				do
+				{
+					fname	= ins[pg][no];
+					dm(@"${pg}, ${no} = ${fname} (in group)");
+					if(fname!="" && sf.displayedPictures[fname])
+						return fname;	//	表示可能な画像であれば、それを返す。
+					no++;
+				}
+				while(no<cnt);	//	そのグループに画像がある限り
+			}
+			dm(@"${p}, ${n} = ${fname}");
+			if(fname!="" && sf.displayedPictures[fname])
+				break;	//	一度表示されたことのある画像ならOK
+		}
+
+		return fname;
+	}
+
+	function getPrevImage(fname)
+	{
+		var ins	= imagenames;
+		var nums= getImageNumbers(fname);
+		var p	= nums[0];
+		var	n	= nums[1];
+		dm(@"${p}, ${n} (${pagecount}) -> ");
+		var	fname;
+		for(var cnt=0; cnt<256; cnt++)
+		{
+			if(n>0)
+				n--;
+			else if(p<1)
+				p = pagecount - 1, n = ins[p].count - 1;
+			else if(p<pagecount)
+				p--, n = ins[p].count - 1;
+			else
+			{
+				//	グループが埋め込まれている場所を探す
+				var	ns	= searchGroupEntrance(p - pagecount);
+				if(ns[1]>0)
+					p	= ns[0], n = ns[1] - 1;
+				else if(ns[0]>0)
+					p	= ns[0] - 1, n = ins[p].count - 1;
+				else
+					p	= pagecount - 1, n = ins[p].count - 1;
+			}
+			fname	= ins[p][n] if p>=0 && n>=0;
+			if(typeof fname == "Integer")
+			{
+				var pg = fname+pagecount, no = ins[pg].count-1;
+				do
+				{
+					fname	= ins[pg][no];
+					dm(@"${pg}, ${no} = ${fname} (in group)");
+					if(fname!="" && sf.displayedPictures[fname])
+						return fname;	//	表示可能な画像であれば、それを返す。
+					no--;
+				}
+				while(no>=0);	//	そのグループに画像がある限り
+			}
+			dm(@"${p}, ${n} = ${fname}");
+			if(fname!="" && sf.displayedPictures[fname])
+				break;	//	一度表示されたことのある画像ならOK
+		}
+
+		return fname;
+	}
+
+	function searchGroupEntrance(groupno)
+	{
+		var ins	= imagenames;
+		for(var i=0; i<pagecount; i++)
+		{
+			for(var j=0; j<ins[i].count; j++)
+			{
+//				dm(@"ins[${i}][${j}] == ${groupno}: ${ins[i][j]==groupno}");
+				if(ins[i][j] === groupno)
+				{
+					dm(@"group ${groupno} = ${i}, ${j}");
+					return [i, j];
+				}
+			}
+		}
+		return [-1, -1];
+	}
+
+	function exchangeGalleryFile(fileA, fileB)
+	{
+		dm("exchange gallery file "+fileA+" <=> "+fileB);
+		//	空文字列はダメ
+		if(fileA=="" || fileB=="")
+			return false;
+
+		//	同じファイルは入れ替えない
+		if(fileA==fileB)
+			return false;
+
+		//	いずれかが今までに表示されていなかった場合は入れ替えられない
+		var dp = sf.displayedPictures;
+		var ins	= imagenames;
+		if(typeof fileA != "Integer")
+		{
+			if(!dp[fileA])	return false;	//	ファイル名指定 = 画像が表示されたか？
+		}
+		else
+		{
+			if(!dp[ins[pagecount+fileA][0]])
+				return false;				//	番号指定 = グループ先頭の画像が表示されたか？
+		}
+		if(typeof fileB != "Integer")
+		{
+			if(!dp[fileB])	return false;
+		}
+		else
+		{
+			if(!dp[ins[pagecount+fileB][0]])
+				return false;				//	番号指定 = グループ先頭の画像が表示されたか？
+		}
+
+		//	画像ファイル名を指定すると、2つを入れ替える
+		var ap=-1, ai;	//	ページ番号と画像番号
+		var bp=-1, bi;
+		var ck = 0;
+		for(var pg=0; pg<ins.count; pg++)
+		{
+			var insp = ins[pg];
+			for(var ic=0; ic<insp.count; ic++)
+			{
+				if(insp[ic]===fileA)
+				{
+					ap	= pg;
+					ai	= ic;
+					dm(@"A: ${fileA}/page=${pg}/no=${ic}");
+					ck++;
+					if(ck>=2)
+					{
+						pg	= ins.count;
+						ic	= insp.count;
+					}
+				}
+				else if(insp[ic]===fileB)
+				{
+					bp	= pg;
+					bi	= ic;
+					dm(@"B: ${fileB}/page=${pg}/no=${ic}");
+					ck++;
+					if(ck>=2)
+					{
+						pg	= ins.count;
+						ic	= insp.count;
+					}
+				}
+			}
+		}
+
+		//	いずれかが存在しない場合は入れ替えられない
+		if(ap<0 || bp<0)
+			return false;
+
+		//	グループが違うとき(スナップを入れ替え)
+		if(ap!=bp)
+		{
+			//	内部グループである方が
+			if(ap>=pagecount)
+			{
+				if(ai!=0)	return false;	//	先頭画像でないなら、交換できない
+
+				//	グループ内の先頭画像なら、グループ番号に置き換える
+				var nums	= searchGroupEntrance(ap-pagecount);
+				ap	= nums[0];
+				ai	= nums[1];
+			}
+			if(bp>=pagecount)
+			{
+				if(bi!=0)	return false;	//	先頭画像でないなら、交換できない
+
+				//	グループ内の先頭画像なら、グループ番号に置き換える
+				var nums	= searchGroupEntrance(bp-pagecount);
+				bp	= nums[0];
+				bi	= nums[1];
+			}
+		}
+		dm(@"A: ${fileA},${ap},${ai} / B: ${fileB},${bp},${bi}");
+
+		dm("exchange ok.");
+		imagenames[ap][ai]	= fileB;	//	入れ替え
+		imagenames[bp][bi]	= fileA;
+
+		if(ap==currentpage)
+		{
+			if(bp==currentpage)
+			{
+				//	両方とも画面に出ているので、入れ替えるのみ
+				var tmp = imagetemps[ai];
+				imagetemps[ai]	= imagetemps[bi];
+				imagetemps[bi]	= tmp;
+
+				//	fileB側を更新
+				with(imagetemps[bi])
+				{
+					.imagefile	= fileA;
+					.drawstatus	= "start drawing";
+					.drawer		= new ThumbnailDrawer(this, bi, drawtime, drawaccel);
+				}
+			}
+			else
+			{
+				//	元fileBのデータを読み込む
+				var ly = imagetemps[ai].layer;
+				if(fileB!="")
+					ly.loadImages(fileB+ThumbExt);
+				else
+				{
+					ly.setImageSize(ThumbnailWidth, ThumbnailHeight);
+					ly.fillRect(0, 0, ThumbnailWidth, ThumbnailHeight, thumbbgcolor);
+				}
+			}
+
+			//	fileA側を更新
+			with(imagetemps[ai])
+			{
+				.imagefile	= fileB;
+				.drawstatus	= "start drawing";
+				.drawer		= new ThumbnailDrawer(this, ai, drawtime, drawaccel);
+			}
+		}
+		else if(bp==currentpage)
+		{
+			//	元fileAのデータを読み込む
+			var ly = imagetemps[bi].layer;
+			if(fileA!="")
+				ly.loadImages(fileA+ThumbExt);
+			else
+			{
+				ly.setImageSize(ThumbnailWidth, ThumbnailHeight);
+				ly.fillRect(0, 0, ThumbnailWidth, ThumbnailHeight, thumbbgcolor);
+			}
+
+			//	fileB側を更新
+			with(imagetemps[bi])
+			{
+				.imagefile	= fileA;
+				.drawstatus	= "start drawing";
+				.drawer		= new ThumbnailDrawer(this, bi, drawtime, drawaccel);
+			}
+		}
+		return true;
+	}
+
+	function checkExchangeIsPossible(x, y, filename)
+	{
+		//	指定の座標に交換可能な画像が存在するかをチェック
+		var no = getImageNo(x, y);
+		if(no>=0)
+			return exchangeGalleryFile(imagenames[currentpage][no], filename);	//	交換してみる
+		else
+			return false;
+	}
+
+	function onErase(snap)
+	{
+		//	スナップが消えた
+		for(var i=0; i<snaps.count; i++)
+		{
+			if(snaps[i] == snap)
+			{
+				release(snap);	//	解放
+				snaps.erase(i);	//	削除
+				saveGalleryState();	//	状態を保存する
+				break;
+			}
+		}
+	}
+
+	function onMoved(snap)
+	{
+		//	スナップが移動した
+		saveGalleryState();	//	状態を保存する
+	}
+
+	function getImageNo(x, y)
+	{
+		//	指定座標にサムネール画像があるか
+		var tl = ThumbnailLeft, tt = ThumbnailTop;
+		var tw = ThumbnailWidth, th = ThumbnailHeight, spc = ThumbnailSpacing;
+		if(x<tl)
+			return -1;
+		if(y<tt)
+			return -1;
+		if(((x -= tl) % (tw + spc)) >= tw)
+			return -1;
+		if(((y -= tt) % (th + spc)) >= th)
+			return -1;
+
+		var s = x \ (tw + spc), l = y \ (th + spc);
+		if(s<0 || s>=ImageSidewaysCount || l<0 || l>=ImageLengthwiseCount)
+			return -1;
+		else
+			return l * ImageSidewaysCount + s;
+	}
+
+	function openImage(page, no)
+	{
+		dm("open: "+page+","+no);
+		if(image==void)
+			image	= new GalleryImageLayer(window, parent, this);
+		openImageNo	= no;
+		changeFocusable(false);	//	ボタンを無効に
+		image.show(getImageName(page, no));
+	}
+
+	function changeFocusable(flag)
+	{
+		parent.back.focusable	= flag;
+		pagebuttons.setAll("focusable", flag);
+		focusable	= flag;
+	}
+
+	function getImageNumbers(filename)
+	{
+		var ins = imagenames;
+		for(var p=0; p<ins.count; p++)
+		{
+			for(var n=0; n<ins[p].count; n++)
+			{
+				if(ins[p][n] === filename)
+				{
+					return [ p, n ];
+				}
+			}
+		}
+		return [ 0, 0, 0 ];
+	}
+
+	function openGroupPage(gno)
+	{
+		isOpenGroupPage	= true;					//	グループページモード
+		currentpage	= gno + pagecount;			//	グループページへ
+		pagebuttons.setAll("visible", false);	//	ページボタンを不可視
+	}
+
+	function closeGroupPage()
+	{
+		currentpage	= lastpage;					//	直前のページへ戻る
+		pagebuttons.setAll("visible", true);	//	ページボタンを可視にする
+		isOpenGroupPage	= false;				//	グループページモード解除
+	}
+
+	function open(no)
+	{
+		dm("open: "+no);
+		if(no<0 || no>=imagetemps.count)
+			return;
+
+		if(imagetemps[no].isVisible)
+		{
+			var gno	= imagenames[currentpage][no];
+			if(typeof gno == "Integer")
+			{
+				//	グループページを開く
+				openGroupPage(gno);
+			}
+			else
+			{
+				//	サムネールを開く
+				openImage(currentpage, no);
+			}
+		}
+	}
+
+	function searchImage(direction, first=curimage, cnt=MaxImagePerPage)
+	{
+		var max = MaxImagePerPage;
+		var c = first;
+		var its = imagetemps;
+		for(var i=cnt; i>0; i--)
+		{
+			c	= 0 if c>=max;
+			c	= max - 1 if c<0;
+//			dm(c+": "+its[c].enterOk);
+			if(its[c].enterOk)
+			{
+				curimage	= c;	//	見つかった
+				return true;
+			}
+			c += direction;
+		}
+		//	見つからなかったら、変えない
+		return false;
+	}
+
+	function onFocus(focused)
+	{
+//		curimage	= lastimage!=void ? lastimage : 0;
+		if(focused == parent.back)
+		{
+			//	Backボタンから来たら、先頭から表示できるサムネールを選ぶ
+			curimage	= 0;
+			searchImage(+1);
+		}
+		else
+		{
+			//	ページボタンから来たら、最後から。
+			curimage	= MaxImagePerPage-1;
+			searchImage(-1);
+		}
+	}
+
+	function onBlur()
+	{
+		curimage	= -1;
+	}
+
+	function onMouseDown(x, y, button, shift)
+	{
+		if(!showed)	return;	//	受付状態になければ無視する
+		if(inTransition)
+			;//owner.onMouseDown(...);	//	これやると強制終了する…
+		else
+		{
+			//	サムネール上でボタンを押したら、その番号を記録する
+			if(button==mbLeft)
+			{
+				lastx	= x;
+				lasty	= y;
+
+				catchno	= getImageNo(x, y);
+				ismoving= false;
+				dm("catch: "+ catchno);
+			}
+			else if(button == mbRight)
+			{
+				if(isOpenGroupPage)		//	グループページを開いている時
+					closeGroupPage();	//	閉じる
+				else
+					hide();
+			}
+		}
+	}
+
+	function onMouseMove(x, y)
+	{
+		if(catchno>=0)
+		{
+			if(ismoving)
+			{
+				//	スナップを移動させる
+				if(snaps.count>0)	//	移動させるスナップがあるなら、
+				{//	スナップ移動中に右クリックしてスナップを消去すると例外が発生するので
+					with(snaps[snaps.count-1])	//	一番最後に作ったスナップを移動
+						.setPos(.left + x - lastx, .top + y - lasty);
+					lastx	= x;
+					lasty	= y;
+				}
+				else
+				{
+					//	離してる
+					ismoving	= false;
+					catchno		= -1;
+				}
+			}
+			else
+			{
+				if((Math.abs(x - lastx) + Math.abs(y - lasty))>SnapingLimit)
+				{
+					//	ファイルが表示不可なものなら作らない
+					if(!imagetemps[catchno].isVisible)
+						return;
+
+					//	すでにスナップが出来ているときは、もう作らない
+					iswaggle	= true;	//	マウスが移動してしまった
+					var fname = getImageName(currentpage, catchno);
+					for(var i=0; i<snaps.count; i++)
+					{
+						if(snaps[i].imagefile == fname)
+							return;
+					}
+
+					//	スナップ生成
+					var l = x - lastx + (ThumbnailLeft + (catchno % ImageSidewaysCount) * (ThumbnailWidth + ThumbnailSpacing));
+					var t = y - lasty + (ThumbnailTop + (catchno \ ImageSidewaysCount) * (ThumbnailHeight + ThumbnailSpacing));
+					snaps[snaps.count]	= new MovableThumbnailLayer(window, this,
+						%[file:fname,left:l,top:t], imagetemps[catchno].layer);
+
+					//	スナップ移動開始
+					ismoving	= true;
+					lastx	= x;	//	移動開始するまでは、lastx|yはクリック座標
+					lasty	= y;
+				}
+			}
+			var no	= getImageNo(x, y);
+			if(no!=enterno)
+			{
+				lastenterno	= enterno;
+				enterno		= no;
+			}
+		}
+		else
+		{
+			var tl = ThumbnailLeft, tt = ThumbnailTop;
+			var ts = ThumbnailSpacing;
+			if(x>=tl && x<tl+(ThumbnailWidth+ts)*ImageSidewaysCount &&
+				y>=tt && y<tt+(ThumbnailHeight+ts)*ImageLengthwiseCount)
+			{
+				curimage	= getImageNo(x, y);
+			}
+			else
+			{
+				curimage	= -1;
+			}
+		}
+	}
+
+	function onMouseUp(x, y, button, shift)
+	{
+		if(!showed)	return;	//	受付状態になければ無視する
+		//	キャッチ状態を解除
+		if(catchno>=0)
+		{
+			if(ismoving)
+			{
+				//	スナップ移動中だったら
+				var dropno = getImageNo(x, y);
+				if(dropno>=0 && dropno<imagenames[currentpage].count)
+				{
+					//	画像上で放したら、そこと交換
+					if(exchangeGalleryFile(imagenames[currentpage][catchno],
+						imagenames[currentpage][dropno]) && snaps.count>0)
+						snaps[snaps.count-1].erase();	//	スナップは削除
+				}
+				saveGalleryState();	//	状態を保存する
+				ismoving	= false;
+			}
+			else if(!iswaggle)
+			{
+				open(catchno);	//	カーソル位置のサムネールを開く
+			}
+			iswaggle= false;
+			catchno	= -1;
+		}
+	}
+
+	function onButtonDown(btn)
+	{
+		if(!showed)	return;	//	受付状態になければ無視する
+		if(btn.id.substr(0, 4)=="page")
+		{
+			//	ページボタン
+			currentpage	= +(btn.id.substr(4));	//	ページを移動
+		}
+		else
+		{
+			//	その他のボタン
+			switch(btn.id)
+			{
+			case "back":
+				if(isOpenGroupPage)
+					closeGroupPage();
+				else
+					hide();
+				break;
+
+			case "nextpage":
+				//	次のページへ
+				var pg = currentpage + 1;
+				if(pg >= pagecount)
+					pg	= 0;
+				pagebuttons.get("page"+currentpage).off();
+				currentpage	= pg;
+				pagebuttons.get("page"+currentpage).on();
+				break;
+
+			case "prevpage":
+				//	前のページへ
+				var pg = currentpage - 1;
+				if(pg < 0)
+					pg	= pagecount - 1;
+				pagebuttons.get("page"+currentpage).off();
+				currentpage	= pg;
+				pagebuttons.get("page"+currentpage).on();
+				break;
+
+			case "default":
+				//	並びを元に戻す
+				resetAlignment();
+				break;
+			}
+		}
+	}
+
+	function onKeyDown(key, shift)
+	{
+		var lsc = ImageSidewaysCount;
+		var max = MaxImagePerPage;
+//		dm("key: "+key);
+		switch(key)
+		{
+		case VK_LEFT:
+			curimage--;
+			curimage = max-1 if curimage<0;
+			searchImage(-1);
+			return;
+		case VK_RIGHT:
+			curimage++;
+			curimage = 0 if curimage>=max;
+			searchImage(+1);
+			return;
+		case VK_UP:
+			var last = curimage;
+			if(last>=lsc)
+			{
+				var lc = last - lsc;
+				switch(lc & (lsc-1))
+				{
+				case 0:
+					do
+					{
+						dm("check: "+lc+" cnt "+lsc);
+						if(searchImage(+1, lc, lsc))
+							return;
+						lc -= lsc;
+					}
+					while(lc>=0);
+					break;
+				case 1:
+					var its = imagetemps;
+					do
+					{
+						if(its[lc].enterOk)		{ curimage = lc;	return; }
+						if(its[lc+1].enterOk)	{ curimage = lc+1;	return; }
+						if(its[lc-1].enterOk)	{ curimage = lc-1;	return; }
+						if(its[lc+2].enterOk)	{ curimage = lc+2;	return; }
+						lc -= lsc;
+					}
+					while(lc>=0);
+					break;
+				case 2:
+					var its = imagetemps;
+					do
+					{
+						if(its[lc].enterOk)		{ curimage = lc;	return; }
+						if(its[lc-1].enterOk)	{ curimage = lc-1;	return; }
+						if(its[lc+1].enterOk)	{ curimage = lc+1;	return; }
+						if(its[lc-2].enterOk)	{ curimage = lc-2;	return; }
+						lc -= lsc;
+					}
+					while(lc>=0);
+					break;
+				case 3:
+					do
+					{
+						if(searchImage(-1, lc, lsc))
+							return;
+						lc -= lsc;
+					}
+					while(lc>=0);
+					break;
+				}
+			}
+//			parent.back.focus();	//	backボタンへフォーカス移動
+			return;
+		case VK_DOWN:
+			var last = curimage;
+			if(last<max-lsc)
+			{
+				var lc = last + lsc;
+				switch(lc & (lsc-1))
+				{
+				case 0:
+					do
+					{
+						if(searchImage(+1, lc, lsc))
+							return;
+						lc += lsc;
+					}
+					while(lc<max);
+					break;
+				case 1:
+					var its = imagetemps;
+					do
+					{
+						if(its[lc].enterOk)		{ curimage = lc;	return; }
+						if(its[lc+1].enterOk)	{ curimage = lc+1;	return; }
+						if(its[lc-1].enterOk)	{ curimage = lc-1;	return; }
+						if(its[lc+2].enterOk)	{ curimage = lc+2;	return; }
+						lc += lsc;
+					}
+					while(lc<max);
+					break;
+				case 2:
+					var its = imagetemps;
+					do
+					{
+						if(its[lc].enterOk)		{ curimage = lc;	return; }
+						if(its[lc-1].enterOk)	{ curimage = lc-1;	return; }
+						if(its[lc+1].enterOk)	{ curimage = lc+1;	return; }
+						if(its[lc-2].enterOk)	{ curimage = lc-2;	return; }
+						lc += lsc;
+					}
+					while(lc<max);
+					break;
+				case 3:
+					do
+					{
+						if(searchImage(-1, lc, lsc))
+							return;
+						lc += lsc;
+					}
+					while(lc<max);
+					break;
+				}
+			}
+			if(currentpage<pagecount)
+				pagebuttons.get("page"+currentpage).focus(); //	現在ページのボタンへフォーカス移動
+			else
+				parent.back.focus();	//	Backボタンへ
+			return;
+		case VK_RETURN:
+		case VK_SPACE:
+			open(curimage);
+			return;
+		case VK_ESCAPE:
+		case VK_HOME:
+		case VK_BACK:
+			onButtonDown(%[id:"back"]);
+			return;
+		case VK_PRIOR:
+			onButtonDown(%[id:"prevpage"]);
+			return;
+		case VK_NEXT:
+			onButtonDown(%[id:"nextpage"]);
+			return;
+		}
+		super.onKeyDown(key, shift, true);
+	}
+
+	function onJoyStick(trig)
+	{
+		if(trig & jsLeft)			onKeyDown(VK_LEFT);
+		else if(trig & jsRight)		onKeyDown(VK_RIGHT);
+		else if(trig & jsUp)		onKeyDown(VK_UP);
+		else if(trig & jsDown)		onKeyDown(VK_DOWN);
+		else if(trig & jsTrigger1)	onKeyDown(VK_RETURN);
+		else if(trig & jsTrigger2)	onKeyDown(VK_ESCAPE);
+		else						super.onJoyStick(trig, true);
+	}
+
+	function onImageClosed()
+	{
+		changeFocusable(true);
+		focus();
+		curimage	= openImageNo;
+	}
+
+	property currentpage
+	{
+		setter(p)
+		{
+			if(p>=0 && p<imagenames.count && p!=currentpage)
+			{
+				lastpage	= currentpage;
+				_currentpage= p;
+				start_loadimage();
+			}
+		}
+		getter	{ return _currentpage; }
+	}
+
+	property enterno
+	{
+		setter(n)
+		{
+			if(n!=enterno)
+			{
+				_enterno	= n;
+			}
+		}
+		getter	{ return _enterno; }
+	}
+
+	property curimage
+	{
+		setter(c)
+		{
+			if(c!==_curimage)
+			{
+				var last = _curimage;
+				_curimage	= c;
+				drawImage(last) if last!==void && last>=0 && last<MaxImagePerPage;
+				drawImage(c) if c!==void && c>=0 && c<MaxImagePerPage;
+				dm("curimage: "+last+" -> "+c);
+			}
+		}
+		getter	{ return _curimage; }
+	}
+}
+
+//	サムネールリストの一つを描画するクラス
+class ThumbnailDrawer
+{
+	var target;
+	var no;
+	var time;
+	var accel;
+
+	var x, y;
+	var starttick;
+
+	function ThumbnailDrawer(target, no, time, accel)
+	{
+		dm("start thumbnail drawer.");
+		this.target	= target;
+		this.no		= no;
+		this.time	= time;
+		this.accel	= accel;
+
+		x	= no % 4;
+		y	= no \ 4;
+
+		starttick	= System.getTickCount();
+		System.addContinuousHandler(draw_handler);
+	}
+
+	function finalize()
+	{
+		target.imagetemps[no].drawstatus	= "end drawing";
+		System.removeContinuousHandler(draw_handler);
+		dm("end thumbnail drawer.");
+	}
+
+	function draw_handler(tick)
+	{
+		var past	= tick - starttick;
+		var tw = ThumbnailWidth, th = ThumbnailHeight;
+		var spc = ThumbnailSpacing;
+		var w = tw;
+		if(past<time)
+		{
+			var per = calcAccel(past / time, accel);
+			w = int(tw * per);
+		}
+
+		//	描画
+		with(target)
+		{
+			var l	= ThumbnailLeft+(tw+spc)*x+tw-w;
+			var t	= ThumbnailTop+(th+spc)*y;
+			.copyRect(l, t, .imagetemps[no].layer, 0, 0, w, th);
+
+			//	カーソルも
+			if(.imagetemps[no].enterOk && no === .curimage)
+				.pileRect(l, t, .cursorlayer, 0, 0, w, th, 255);
+		}
+
+		invalidate this if past>=time;	//	描画が終わったら自害する。
+	}
+}
+
+//	スナップのレイヤー
+class MovableThumbnailLayer extends FadeLayer
+{
+	var imagefile;
+
+	var iscatch;
+	var lx, ly;
+	var clickx, clicky;	//	クリックされた座標
+
+	var time = 200, accel = 0;
+
+	var opacitytrans, fromopacity;
+	var starttick;
+	var isopacitychanging;
+
+	var innerwidth, innerheight;
+
+	function MovableThumbnailLayer(win, par, info, layer)
+	{
+		super.FadeLayer(...);
+		name	= "スナップレイヤー";
+		setInfo(info, layer);
+		appear();
+	}
+
+	function finalize()
+	{
+		stop_opacitychanging();
+		super.finalize(...);
+	}
+
+	function setInfo(info, layer)
+	{
+		imagefile	= info.file;
+		var bd = ThumbnailBorder;
+		with(layer)
+		{
+			setImageSize(.imageWidth+(bd<<1), .imageHeight+(bd<<1));
+			setSizeToImageSize();
+			copyRect(bd, bd, layer, 0, 0, .imageWidth, .imageHeight);
+			drawBorder(.imageWidth, .imageHeight);//, 0xFFFFFF00);
+		}
+
+		setPos(info.left, info.top);
+	}
+
+	function drawBorder(inw=innerwidth, inh=innerheight, color=ThumbnailBorderColor)
+	{
+		var bd = ThumbnailBorder;
+		fillRect(0, 0, imageWidth, bd, color);		//	枠を書く
+		fillRect(0, bd, bd, imageHeight-bd, color);
+		fillRect(bd, imageHeight-bd, inw+bd, bd, color);
+		fillRect(imageWidth-bd, bd, bd, inh, color);
+		innerwidth	= inw;
+		innerheight	= inh;
+	}
+
+	function getInfo()
+	{
+		return %[file:imagefile,left:left,top:top];
+	}
+
+	function appear()
+	{
+//		show(defaulttime, defaultaccel);
+		start_opacitychanging(255);
+	}
+
+	function erase()
+	{
+//		hide(defaulttime, defaultaccel, parent.onErase);	//	消去。消えたときにonEraseを呼ぶ
+		start_opacitychanging(0, parent.onErase);
+	}
+
+	function start_opacitychanging(to, func)
+	{
+		opacitytrans= to - opacity;
+		fromopacity	= opacity;
+		nextfunc	= func;
+		visible		= true;
+		starttick	= System.getTickCount();
+		System.addContinuousHandler(changeopacity_handler);
+		isopacitychanging	= true;
+	}
+
+	function changeopacity_handler(tick)
+	{
+		var past = tick - starttick;
+		if(past<time)
+			opacity	= fromopacity + opacitytrans * calcAccel(past / time, accel);
+		else
+		{
+			opacity = fromopacity + opacitytrans;
+			if(opacity<1)
+				visible	= false;
+			stop_opacitychanging();
+		}
+	}
+
+	function stop_opacitychanging()
+	{
+		if(isopacitychanging)
+		{
+			System.removeContinuousHandler(changeopacity_handler);
+			isopacitychanging	= false;
+			if(nextfunc!=void)
+				nextfunc(this);
+		}
+	}
+
+	function onMouseEnter()
+	{
+//		drawBorder(,, 0xFFFFFF00);
+	}
+
+	function onMouseLeave()
+	{
+//		drawBorder();
+	}
+
+	function onMouseDown(x, y, button, shift)
+	{
+		if(!parent.showed)	return;	//	受付状態になければ無視する
+		if(button == mbLeft)
+		{
+			clickx = lx	= left + x;
+			clicky = ly	= top + y;
+			iscatch	= true;
+
+			//	最前へ移動する
+			parent.moveTop(this);
+		}
+		else if(button == mbRight)
+		{
+			//	スナップを削除する
+			erase();
+		}
+	}
+
+	function onMouseMove(x, y)
+	{
+		if(iscatch)
+		{
+			//	つかんでいる間は移動できる
+			var mx = x + left, my = y + top;
+			left+= mx - lx;
+			top	+= my - ly;
+			lx	= mx;
+			ly	= my;
+		}
+	}
+
+	function onMouseUp(x, y, button, shift)
+	{
+		if(!parent.showed)	return;	//	受付状態になければ無視する
+		if(iscatch)
+		{
+//			dm("snap on mouse up.");
+			if(parent.checkExchangeIsPossible(left+x, top+y, imagefile))
+				erase();	//	入れ替えが実行されたらスナップは消去
+			else if(clickx == left+x && clicky == top+y)
+			{
+//				dm("snap open.");
+				if(sf.displayedPictures[imagefile])
+				{
+					//	一度表示された画像なら大きく開く(スナップになっている時点でチェック終わっているようなものだけどね)
+					with(parent)
+					{
+						var imgnos = .getImageNumbers(imagefile);
+						.openImage(imgnos[0], imgnos[1]);	//	普通のクリックならその画像を開く
+					}
+				}
+			}
+			else
+				parent.onMoved(this);
+			iscatch	= false;	//	放した
+		}
+	}
+
+	function setPos(l, t)
+	{
+		if(l<0)		l	= 0;
+		else if(l+width>parent.width)	l	= parent.width - width;
+		if(t<0)		t	= 0;
+		else if(t+height>parent.height)	t	= parent.height - height;
+
+		super.setPos(l, t);
+	}
+
+	property left
+	{
+		setter(l)
+		{
+			if(l!==left)
+			{
+				if(l<0)	l	= 0;
+				else if(l+width>parent.width)	l	= parent.width - width;
+				super.left	= l;
+			}
+		}
+		getter	{ return super.left; }
+	}
+
+	property top
+	{
+		setter(t)
+		{
+			if(t!==top)
+			{
+				if(t<0)	t	= 0;
+				else if(t+height>parent.height)	t	= parent.height - height;
+				super.top	= t;
+			}
+		}
+		getter	{ return super.top; }
+	}
+}
+
+/*----------------------------------------------------------------------------/
+/	
+/----------------------------------------------------------------------------*/
+@endif

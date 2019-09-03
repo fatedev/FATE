@@ -1,0 +1,101 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) TYPE-MOON All Rights Reserved.
+/		ステータスメニューでわかった項目を知らせる
+/----------------------------------------------------------------------------*/
+@if(__WISEUPLAYER_DEFINED__==0)
+@set(__WISEUPLAYER_DEFINED__=1)
+
+class WiseUpLayer extends FadeLayer
+{
+	var wiseupfile	= "wiseup";
+
+	var timer;
+	var uptime = 200, lifetime = 3000;
+	var upaccel = 3;
+	var reserved;
+
+	function WiseUpLayer(win, par)
+	{
+		super.FadeLayer(...);
+		name	= "WiseUp";
+	}
+
+	function finalize()
+	{
+		release(timer);
+		super.finalize(...);
+	}
+
+	function popup(l, t, delay=0)
+	{
+		//	準備
+		loadImages(wiseupfile);
+		setSizeToImageSize();
+		setPos(l - width\2, t + height);
+		opacity	= 0;
+
+		//	出現
+		move(left, t, 192, uptime, -upaccel, onPopuped, delay);
+	}
+
+	function onPopuped()
+	{
+		//	死ぬまでの時間を計る
+		with(timer = new Timer(onLifeExhausted, ""))
+		{
+			.interval	= lifetime;
+			.enabled	= true;
+		}
+	}
+
+	function onLifeExhausted()
+	{
+		//	閉じる
+		if(!reserved)
+		{
+			move(left, top + height*2, 0, uptime, upaccel, onFinished);
+			timer.enabled	= false if timer!=void;
+			reserved	= true;
+		}
+	}
+
+	function onFinished()
+	{
+		eraseWiseup(this);
+		invalidate this;
+	}
+}
+
+var wiseuplayers = [];
+function addWiseup(win, par, l, t, delay)
+{
+	var layer;
+	wiseuplayers.add(layer = new WiseUpLayer(win, par));
+	layer.popup(l, t, delay);
+}
+
+function eraseWiseup(it)
+{
+	var wuls = wiseuplayers;
+	for(var i=0; i<wuls.count; i++)
+	{
+		if(wuls[i] == it)
+			wuls.erase(i);
+	}
+}
+
+function clearWiseup()
+{
+	var wuls = wiseuplayers;
+	for(var i=0; i<wuls.count;)
+	{
+		var w = wuls[i];
+		wuls.erase(i);
+		w.onLifeExhausted();
+	}
+}
+
+/*----------------------------------------------------------------------------/
+/	
+/----------------------------------------------------------------------------*/
+@endif

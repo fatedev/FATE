@@ -1,0 +1,375 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) 1999-2002 TYPE-MOON All Rights Reserved.
+/		イエスノーを受け付けるレイヤー
+/----------------------------------------------------------------------------*/
+@if(__YESNOLAYER_DEFINED__==0)
+@set(__YESNOLAYER_DEFINED__=1)
+
+Scripts.execStorage("ExButtonLayer.tjs");
+
+var alreadyExistYesNo = false;	//	YesNoレイヤーは一度にひとつしか存在できない
+
+class YesNoLayer extends FadeLayer
+{
+	var yesbtn;
+	var nobtn;
+
+	var base	= [];
+
+	var text;
+	var yesimage	= "汎用ok";
+//	var yespos		= [ 19, 88 ];
+	var yespos		= [ -107, 88 ];	//	X座標は中心からの位置
+	var yeshint		= "決定します。";
+	var noimage		= "汎用cancel";
+//	var nopos		= [ 135, 88 ];
+	var nopos		= [ 9, 88 ];	//	X座標は中心からの位置
+	var nohint		= "キャンセルします。";
+//	var windowimage	= "汎用ウィンドウ";
+	var baseimage	= [
+		"汎用左", "汎用中", "汎用右"
+	];
+	var minwidth	= 252;		//	最低限の幅
+
+	var linespacing	= 2;		//	行間
+	var spacing		= 3;		//	ボタンの間
+	var textcolor	= 0xFFFFFF;	//	文字色
+	var shadowcolor	= 0x000000;	//	縁取りの色
+	var LRmargin	= 20;		//	左右のマージン
+
+	var time		= 100;
+	var accel		= 2;
+
+	var resultfunc;				//	結果を受け取る関数
+	var result;					//	結果
+
+	var arg = [];
+	var showed = false;
+
+	var lastConductorStatus;//	KAGConductorの直前の状態を保存
+	var isHideCursorItself;	//	カーソルの自動隠滅を自分で設定したか？
+
+	var reverse;			//	裏側の背景にリンクするレイヤー
+	var bros;				//	表側のレイヤー
+
+	var defaultCancel;		//	デフォルトでキャンセルの位置にカーソルを置くか?
+
+	var bringTimer;
+
+	function YesNoLayer(win, par, defaultcancel=false)
+	{
+		alreadyExistYesNo	= true;
+
+		super.FadeLayer(...);
+		name	= "Yes/No 問い合わせ";
+		defaultCancel	= defaultcancel;	//	デフォルトでキャンセルの位置にカーソルを置くか?
+		hitType	= htMask;
+		hitThreshold	= 1;	//	ほぼ全て拾う
+
+		//	背景用画像
+		for(var i=0; i<baseimage.count; i++)
+		{
+			var b = base[i] = new global.Layer(win, this);
+			b.loadImages(baseimage[i]);
+			b.setSizeToImageSize();
+		}
+
+		//	裏レイヤー
+		with(reverse = new global.FadeLayer(win, win.fore.base==par ? win.back.base : win.fore.base))
+		{
+			.name	= "Yes/No 問い合わせ(裏)";
+			.hitType		= htMask;
+			.hitThreshold	= 1;	//	ほぼ全て拾う
+			.owner			= this;
+			.onMouseDown	= function ()
+			{
+				owner.onMouseDown(...);
+			} incontextof reverse;
+		}
+
+		//	ボタン生成
+		var n = nobtn	= [];
+		var y = yesbtn	= [];
+		if(defaultcancel)
+		{
+			n[0] = new global.ExButtonLayer(win,this,"no",0,nopos[1],noimage,nohint);
+			y[0] = new global.ExButtonLayer(win,this,"yes",0,yespos[1],yesimage,yeshint);
+			n[1] = new global.ExButtonLayer(win,reverse,"no",0,nopos[1],noimage,nohint);
+			y[1] = new global.ExButtonLayer(win,reverse,"yes",0,yespos[1],yesimage,yeshint);
+		}
+		else
+		{
+			y[0] = new global.ExButtonLayer(win,this,"yes",0,yespos[1],yesimage,yeshint);
+			n[0] = new global.ExButtonLayer(win,this,"no",0,nopos[1],noimage,nohint);
+			y[1] = new global.ExButtonLayer(win,reverse,"yes",0,yespos[1],yesimage,yeshint);
+			n[1] = new global.ExButtonLayer(win,reverse,"no",0,nopos[1],noimage,nohint);
+		}
+		y[0].changePushButton(true);	//	押されるだけのボタン
+		n[0].changePushButton(true);
+		y[1].changePushButton(true);
+		n[1].changePushButton(true);
+		y[1].target	= this;				//	メッセージ送り先を変更
+		n[1].target	= this;
+	}
+
+	function finalize()
+	{
+		release(bringTimer);
+		release(base[2]);
+		release(base[1]);
+		release(base[0]);
+		release(yesbtn[1]);
+		release(yesbtn[0]);
+		release(nobtn[1]);
+		release(nobtn[0]);
+		super.finalize(...);
+		alreadyExistYesNo	= false;
+	}
+
+	function show(t="", rf=void, arg1=void, arg2=void, fontsize=16, x, y)
+	{
+		if(showed)
+			return true;
+		showed	= true;
+
+		window.pauseQuaking	= true;	//	揺れを停止させる
+		window.pauseClickRepeat(true);	//	クリックリピート停止
+
+		var conductor	= window.conductor;
+//		dm("conductor.status = "+conductor.status);
+//		if((lastConductorStatus = conductor.status) != conductor.mStop)
+		if((lastConductorStatus = conductor.status) == conductor.mRun)	//	動作中のみ
+			conductor.sleep();	//	KAGの動作を停止する
+
+		if(t=="")
+			t	= "よろしいですか？";
+
+		if(font.height!=fontsize)
+			font.height	= fontsize;
+
+		var lines	= [].split("\n", t);	//	改行記号で行毎に分割
+
+		//	画面全体を覆うようにする(クリックを拾うため)
+		var par = parent;
+		setPos(0, 0);
+		setSize(par.width, par.height);
+
+		//	文字表示に必要な幅を計算
+		var maxwidth = 0;
+		for(var i=0; i<lines.count; i++)
+		{
+			var w = font.getTextWidth(lines[i]);
+			if(maxwidth < w)
+				maxwidth	= w;
+		}
+		var bs = base;
+		var w = maxwidth + LRmargin * 2;
+		w	= minwidth if w<minwidth;	//	最低限必要な幅に達しているか？
+		var h = bs[0].height;
+
+		//	表示位置を決定
+		var l, t;
+		if(window.inputDevice=="mouse" && x!==void && y!==void)
+		{
+			//	カーソル座標が指定されていたら、その位置にCANCELボタンが来るように計算
+			var center;
+			if(defaultCancel)
+			{//	キャンセルの位置にカーソル
+				nobtn[0].left	= x - (nobtn[0].width>>1);
+				center	= nobtn[0].left - nopos[0];
+				yesbtn[0].left	= center + yespos[0];
+			}
+			else
+			{//	キャンセルの位置にカーソル
+				yesbtn[0].left	= x - (yesbtn[0].width>>1);
+				center	= yesbtn[0].left - yespos[0];
+				nobtn[0].left	= center + nopos[0];
+			}
+			l	= center - (w>>1);
+			var out;
+			if(l<0)
+			{
+				yesbtn[0].left	-= l;
+				nobtn[0].left	-= l;
+				l			= 0;
+			}
+			else if((out = l+w-par.width)>0)
+			{
+				yesbtn[0].left	-= out;
+				nobtn[0].left	-= out;
+				l			-= out;
+			}
+
+			yesbtn[0].top = nobtn[0].top = y - (yesbtn[0].height>>1);
+			t	= yesbtn[0].top - yespos[1];
+			if(t<0)
+			{
+				yesbtn[0].top = nobtn[0].top = yesbtn[0].top - t;
+				t	= 0;
+			}
+			else if((out = t+h-par.height)>0)
+			{
+				yesbtn[0].top = nobtn[0].top = yesbtn[0].top - out;
+				t	-= out;
+			}
+		}
+		else
+		{
+			//	なければ中央に来るようにする
+			l	= (par.width - w)>>1;
+			t	= (par.height - h)>>1;
+			yesbtn[0].setPos((par.width>>1)+yespos[0], t+yespos[1]);
+			nobtn[0].setPos((par.width>>1)+nopos[0], t+nopos[1]);
+		}
+
+		//	ベースを書き込む
+		copyRect(l, t, bs[0], 0, 0, bs[0].width, bs[0].height);
+		copyRect(l+w-bs[2].width, t, bs[2], 0, 0, bs[2].width, bs[2].height);
+		stretchCopy(l+bs[0].width, t, w-bs[0].width-bs[2].width, bs[1].height,
+					bs[1], 0, 0, bs[1].width, bs[1].height, stNearest);
+
+		//	周囲を透明化
+		fillRect(0, 0, width, t, 0x01000000);
+		fillRect(0, t, l, height-t, 0x01000000);
+		fillRect(l+w, t, width-w-l, height-t, 0x01000000);
+		fillRect(l, t+h, w, height-t-h, 0x01000000);
+
+		//	文字表示開始位置を決定
+		var tl = l + ((w - maxwidth) >> 1);
+		if(tl<0)	tl	= 0;
+		var textheight = font.getTextHeight(lines[0]);
+		var tt = t + ((yespos[1] - (lines.count * (textheight+linespacing) - linespacing))>>1);
+
+		//	テキストを描画
+		for(var i=0; i<lines.count; i++)
+		{
+			drawText(tl, tt, lines[i], textcolor, 255, true, 1024, shadowcolor, 2);
+			tt	+= textheight + linespacing;
+		}
+
+		//	カーソルをボタンのところに移動させる
+		if(typeof .moveCursor != "undefined")
+		{
+			if(defaultCancel)
+				moveCursor(nobtn[0], nobtn[0].width>>1, nobtn[0].height>>1);
+			else
+				moveCursor(yesbtn[0], yesbtn[0].width>>1, yesbtn[0].height>>1);
+		}
+
+		//	カーソルを自動的に隠さない
+		if(typeof .hideCursorSetting!="undefined" && (isHideCursorItself=movecursor_object.enabledHide))
+			hideCursorSetting(false);
+
+		//	裏レイヤーにも
+		with(reverse)
+		{
+			.setPos(0, 0);
+			.setSize(par.width, par.height);
+			.copyRect(0, 0, this, 0, 0, width, height);
+		}
+		with(yesbtn[0])
+			yesbtn[1].setPos(.left, .top);
+		with(nobtn[0])
+			nobtn[1].setPos(.left, .top);
+
+		result	= false;
+		opacity	= 1;
+		fade(255, time, accel);
+		reverse.opacity	= 1;
+		reverse.fade(255, time, accel);
+		setMode();
+		resultfunc	= rf;
+		arg[0] = arg1;
+		arg[1] = arg2;
+
+		//	最前面に移動するタイマーを稼動開始
+		with(bringTimer = new Timer(onBringToFront, ""))
+		{
+			.interval	= 100;
+			.enabled	= true;
+		}
+
+		return true;
+	}
+
+	function hide()
+	{
+		if(!showed)
+			return true;
+		showed	= false;
+
+		release(bringTimer);
+
+		removeMode();
+		yesbtn[0].state	= 0;	//	ボタンを何も無い状態にする
+		nobtn[0].state	= 0;
+		yesbtn[1].state	= 0;	//	ボタンを何も無い状態にする
+		nobtn[1].state	= 0;
+		fade(0, time, -accel);
+		reverse.fade(0, time, -accel);
+		suicide(time+200);
+		reverse.suicide(time+200);
+
+		window.pauseClickRepeat(false);	//	クリックリピートの再開
+		window.pauseQuaking	= false;	//	揺れを再開させる
+
+		//	カーソルを自動的に隠す
+		if(isHideCursorItself)
+			hideCursorSetting(true);
+
+		if(kag!=void && kag isvalid)
+		{
+			var conductor = kag.conductor;
+			if(lastConductorStatus==conductor.mRun)
+				conductor.run();	//	KAGの実行を再開する
+/*			else if(lastConductorStatus==conductor.mWait)
+				conductor.status	= conductor.mWait;
+*/		}
+
+		return true;
+	}
+
+	function onButtonDown(btn)
+	{
+		var se	= cancelSE;
+//		dm("yes no dialog: on "+btn.id);
+		switch(btn.id)
+		{
+		case "yes":
+			result	= true;
+			se		= okSE;
+		case "no":
+			playSound(se);
+			hide();
+			resultfunc(result, arg[0], arg[1]) if resultfunc!=void;	//	結果を知らせる
+			break;
+		}
+	}
+
+	function onMouseDown(x, y, button, shift)
+	{
+		if(button == mbRight)
+			onButtonDown(nobtn[0]);
+	}
+
+	function onKeyDown(button, shift)
+	{
+		super.onKeyDown(button, shift, true);
+	}
+
+	function onBringToFront()
+	{
+		//	表も裏も最前面へ移動する
+//		bringToFront();		//	bringToFrontするとlayer.absoluteが初期化されてしまう。
+//		reverse.bringToFront();
+		absolute++;
+		reverse.absolute++;	//	最前面へ移動する
+		//	問題点(1秒間に10ずつふえるので、一ヶ月出しっぱなしだと2592000とか言う数字に
+		//	なってしまう…、あんまり問題でもないか。
+	}
+}
+
+/*----------------------------------------------------------------------------/
+/
+/----------------------------------------------------------------------------*/
+@endif

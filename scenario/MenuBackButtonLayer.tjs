@@ -1,0 +1,47 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) TYPE-MOON All Rights Reserved.
+/		戻るボタン
+/----------------------------------------------------------------------------*/
+@if(__MENUBACKBUTTONLAYER_DEFINED__==0)
+@set(__MENUBACKBUTTONLAYER_DEFINED__=1)
+
+Scripts.execStorage("ExtraMenuButtonLayer.tjs");
+
+//	初期値だけある
+class MenuBackButtonLayer extends ExtraMenuButtonLayer
+{
+	var noclear	= false;
+	var savedleft, savedtop;
+
+	function MenuBackButtonLayer(win, par,id="back",l=695,t=550,img="ex_back",hint="戻る",eldest=true, bartype=3, bartop=578)
+	{
+		dm("bartype: "+bartype);
+		super.ExtraMenuButtonLayer(win, par, id, l, t, img, hint, eldest, bartype, bartop);
+		savedleft	= l;
+		savedtop	= t;
+	}
+
+	function resetPos()
+	{
+		setPos(savedleft, savedtop);
+	}
+
+	function onInnerClosed()
+	{
+		invalidate this if !noclear;
+	}
+
+	function onKeyDown(key, shift)
+	{
+		//	右、下キー無効
+		if(key==VK_RIGHT || key==VK_DOWN)
+			;
+		else
+			super.onKeyDown(key, shift, true);
+	}
+}
+
+/*----------------------------------------------------------------------------/
+/	
+/----------------------------------------------------------------------------*/
+@endif

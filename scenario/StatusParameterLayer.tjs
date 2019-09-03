@@ -1,0 +1,193 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) TYPE-MOON All Rights Reserved.
+/		パラメータレイヤー
+/----------------------------------------------------------------------------*/
+@if(__PARAMETERLAYER_DEFINED__==0)
+@set(__PARAMETERLAYER_DEFINED__=1)
+
+Scripts.execStorage("FadeLayer.tjs");
+Scripts.execStorage("WiseUpLayer.tjs");
+
+class StatusParameterLayer
+{
+	var window, parent;
+	var name;
+
+	var layers;
+	var _cur;
+
+	var defaulttime=300, defaultaccel=-2;
+	var lastdelay;
+
+	var baseleft, basetop, movey;
+	var hideopacity=0, showopacity=255;
+
+	var visible;
+	var suppressed;
+
+	var usewiseup;
+
+	function StatusParameterLayer(win, par)
+	{
+		window	= win, parent = par;
+//		name	= "パラメータ: ";
+
+		layers	= [];
+		_cur	= 0;
+		visible		= false;
+		suppressed	= false;
+	}
+
+	function finalize()
+	{
+		release(layers[0]);
+		release(layers[1]);
+	}
+
+	//	形なりの初期化
+	function init(l, t, usewiseup=true)
+	{
+		baseleft= l;
+		basetop	= t;
+		this.usewiseup	= usewiseup;
+	}
+
+	//	表示
+	function open(storage, l, t, delay=0, nomove=false, usewiseup=true, wiseup=true)
+	{
+		if(visible)	return;
+
+//		name	= storage;
+		with(curlayer)
+		{
+			.loadImages(storage);
+			.setSizeToImageSize();
+			.name	= storage;
+			movey	= nomove ? 0 : .height \ 2;
+			.setPos(baseleft = l, (basetop = t) - movey);
+			.hitThreshold	= 256;
+			.opacity	= hideopacity;
+			if(nomove)
+				.fade(showopacity, defaulttime, defaultaccel, void, delay);
+			else
+				.move(l, basetop, showopacity, defaulttime, defaultaccel, void, delay);
+		}
+		visible	= true;
+
+		//	わかった！を表示
+		if((this.usewiseup = usewiseup) && wiseup)
+			addWiseup(window, parent, l, t, delay);
+
+//		dm(storage+": "+wiseup+" / "+usewiseup);
+	}
+
+	//	切替
+	//	画像、遅延、わかった！を表示するか、動かさないか、動かさない時の
+	function change(storage, delay, uw=true, method="", rule="", time=defaulttime)
+	{
+//		dm(storage+": "+uw+" / "+usewiseup);
+		with(nextlayer)
+		{
+			.loadImages(storage);
+			.setSizeToImageSize();
+			movey	= method!="" ? 0 : .height \ 2;
+			.setPos(baseleft, basetop - movey);
+			.hitThreshold	= 256;
+			.opacity	= hideopacity;
+		}
+
+		curlayer.stopTransition();
+		nextlayer.stopTransition();
+
+		if(method!="")
+		{
+			if(suppressed || !visible)
+				nextlayer.fade(showopacity, time, defaultaccel, void, delay);
+			else
+			{
+				//	トランジションで切替
+				nextlayer.opacity	= showopacity;	//	表示できる状態にしておかないとダメ
+				curlayer.beginTransition(%[method:method,rule:rule,time:time],
+					nextlayer);
+			}
+		}
+		else
+		{
+			//	移動＋フェードで切替
+			nextlayer.move(baseleft, basetop, showopacity, time, defaultaccel, void, delay);
+			if(!suppressed && visible)
+				curlayer.move(baseleft, basetop+movey, hideopacity, time, defaultaccel,
+					void, delay);	//	隠れていなければ、隠す必要がある
+		}
+
+		//	わかった！を表示
+		if(usewiseup && uw)	addWiseup(window, parent, baseleft, basetop, delay);
+
+		flip();
+	}
+
+	//	一時的に隠す
+	function suppress(delay)
+	{
+		if(!visible)	return;
+		if(suppressed)	return;
+
+		curlayer.fade(hideopacity, defaulttime, defaultaccel, void, delay);
+	}
+
+	//	消去
+	function close(delay=lastdelay)
+	{
+		if(!visible)	return;
+		if(suppressed)	return;	//	隠れているなら何もしなくて良い
+
+		with(curlayer)
+		{
+			if(movey==0)
+				.fade(hideopacity, defaulttime, defaultaccel, onInnerClosed, delay);
+			else
+				.move(baseleft, basetop + movey, hideopacity, defaulttime, defaultaccel,
+					onInnerClosed, delay);
+		}
+	}
+
+	function onInnerClosed()
+	{
+		invalidate this;
+	}
+
+	function flip()
+	{
+		_cur	= (_cur + 1) & 1;
+	}
+
+	property curlayer
+	{
+		getter	{
+			if(layers[_cur]==void)
+			{
+				layers[_cur] = new FadeLayer(window, parent);
+//				layers[_cur].name	= name+" primary";
+			}
+			return layers[_cur];
+		}
+	}
+
+	property nextlayer
+	{
+		getter	{
+			var next = (_cur+1) & 1;
+			if(layers[next]==void)
+			{
+				layers[next] = new FadeLayer(window, curlayer);
+//				layers[next].name	= name+" secondary";
+			}
+			return layers[next];
+		}
+	}
+}
+
+/*----------------------------------------------------------------------------/
+/	
+/----------------------------------------------------------------------------*/
+@endif

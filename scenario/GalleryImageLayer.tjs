@@ -1,0 +1,399 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) TYPE-MOON All Rights Reserved.
+/		ギャラリー画像表示レイヤー
+/----------------------------------------------------------------------------*/
+@if(__GALLERYIMAGELAYER_DEFINED__==0)
+@set(__GALLERYIMAGELAYER_DEFINED__=1)
+
+Scripts.execStorage("subroutine.tjs");
+
+class GalleryImageLayer extends FadeLayer
+{
+	var buttondata	= [
+		[ 3, "prev",	"gl_leftpaper",	"前の画像へ",	505, 567 ],
+		[ 3, "back",	"gl_back",	"サムネールメニューへ戻ります。", 615, 566 ],
+		[ 3, "next",	"gl_rightpaper","次の画像へ",	690, 567 ],
+	];
+	var defaulttime=300;
+	var scrollInterval	= 33;
+	var scrollTotalTime	= 3000;
+
+	var owner;
+	var layers;
+	var curlayer;
+
+	var buttons;
+
+	var	storage;
+
+	var time;
+
+	var _state;
+
+	var dummylayer;
+
+	var showed;
+
+	//	画像のスクロール
+	var	isLeftDown	= false;
+	var	lastx, lasty;
+	var	mvsx, mvsy;
+	var	lastImageLeft, lastImageTop;
+
+	//	トランジション時、同じサイズにする
+	var	orgWidth, orgHeight;
+
+	//	画像のスクロール
+	var	timer, xscroll, yscroll;
+
+	function GalleryImageLayer(win, par, bros)
+	{
+		super.FadeLayer(...);
+		name	= "画像表示レイヤー";
+
+		this.owner		= bros;
+		setPos(0, 0);
+		setImageSize(par.width, par.height);
+		setSizeToImageSize();
+
+		layers		= [];
+		layers[0]	= this;
+		layers[1]	= new GalleryImageFlipLayer(win, par, this);
+		curlayer	= 0;
+
+		buttons	= createButtons(win, parent, buttondata,, false,0);
+		buttons.setAll("target", this);
+
+		visible		= false;
+	}
+
+	function finalize()
+	{
+		release(timer);
+		if(dummylayer!=void)
+		{
+			for(var i=0; i<dummylayer.count; i++)
+				release(dummylayer[i]);
+			invalidate dummylayer;
+		}
+		release(layers[1]);
+		super.finalize(...);
+	}
+
+	function show(fname, time=defaulttime)
+	{
+		layers[curlayer].loadImages(storage=fname);
+		state	= 0;
+
+		showed	= true;
+		with(layers[curlayer])
+		{
+			.fade(255, time,, startScroll);
+			.focusable	= true;
+			.focus();
+		}
+		layers[(curlayer+1)&1].focusable	= true;
+	}
+
+	function change(fname, time=defaulttime, rule="")
+	{
+		release(timer);
+		var nl	= (curlayer + 1) & 1;
+		var cur	= curlayer;
+		curlayer= nl;
+
+		var method	= rule=="" ? "crossfade" : "universal";
+
+		with(layers[nl])
+		{
+			.loadImages(storage=fname);
+			.stopTransition();
+		}
+		with(layers[cur])
+		{
+			.stopTransition();
+
+			//	トランジションは表示座標でなく画像自体の情報で行われるので、
+			//	元の画像が大きかった場合は画像を縮小してトランジションさせる
+			dm(@"${.imageWidth}>${.width} || ${.imageHeight}>${.height}");
+			if(.imageWidth>.width || .imageHeight>.height)
+			{
+				//	表示中の画像を別レイヤーに移し、(0, 0)の位置へ描画する
+				var	l	= new global.Layer(window, this);
+				l.setImageSize(.width, .height);
+				l.copyRect(0, 0, layers[cur], -.imageLeft, -.imageTop, .width, .height);
+				.copyRect(0, 0, l, 0, 0, .width, .height);
+				invalidate l;
+				.setImagePos(0, 0);
+				.setImageSize(.width, .height);
+			}
+
+			//	新しい方の画像サイズが大きかったら、古い方を大きくしてサイズをあわせる
+			if(.imageWidth<layers[nl].imageWidth)
+				.imageWidth	= layers[nl].imageWidth;
+			if(.imageHeight<layers[nl].imageHeight)
+				.imageHeight= layers[nl].imageHeight;
+
+			dm("begin transition: "+.name+" -> "+layers[nl].name);
+			.beginTransition(%[method:method,rule:rule,children:true,time:time,vague:8], layers[nl]);
+		}
+	}
+
+	function hide(time=defaulttime)
+	{
+		release(timer);
+
+		showed	= false;
+		layers[curlayer].stopTransition();
+		layers[(curlayer+1)&1].stopTransition();
+//	トランジションで切り替えると前後の位置関係が変わってしまうのでヤメー
+/*		with(owner)
+		{
+			.stopTransition();
+			.focusable		= true;
+			.currentpage	= page;	//	移動しているかもしれないので
+		}
+		dm("begin transition: "+layers[curlayer].name+" -> "+owner.name);
+		layers[curlayer].beginTransition(%[method:"crossfade",children:true,time:time], owner);
+*/
+		with(layers[curlayer])
+		{
+			.fade(0, time);
+			.focusable	= false;
+		}
+		layers[(curlayer+1)&1].focusable	= false;
+
+		owner.onImageClosed();
+
+		//	ボタンも隠す
+		hideButtons();
+	}
+
+	function switchState()
+	{
+		_state	= (state + 1) & 1;
+		buttons.execAll("fade", 255 * state, defaulttime, 0);
+	}
+
+	function hideButtons()
+	{
+		if(state!=0)
+		{
+			buttons.execAll("fade", 0, time, 0);
+			_state	= 0;
+		}
+	}
+
+	function onButtonDown(btn)
+	{
+		if(!showed)	return;	//	受付状態になければ無視する
+		switch(btn.id)
+		{
+		case "prev":
+			change(owner.getPrevImage(storage),, "pageleft");
+			break;
+		case "next":
+			change(owner.getNextImage(storage),, "pageright");
+			break;
+		case "back":
+			hide();
+			break;
+		}
+	}
+
+	function onMouseDown(x, y, button, shift)
+	{
+		if(!showed)	return;	//	受付状態になければ無視する
+		if(inTransition)
+			//	トランジション中はクリックを受け付けない
+			;//owner.onMouseDown(...);	//	これやると強制終了する…
+		else if(button==mbLeft)
+		{
+			isLeftDown	= true;
+			mvsx = lastx = x, mvsy = lasty = y;
+			lastImageLeft	= layers[curlayer].imageLeft;
+			lastImageTop	= layers[curlayer].imageTop;
+		}
+		else if(button==mbRight)
+			hide();
+		release(timer);
+	}
+
+	function onMouseMove(x, y)
+	{
+		if(!showed)	return;	//	受付状態になければ無視する
+		if(isLeftDown)
+		{
+			with(layers[curlayer])
+			{
+				var	l	= .imageLeft + x - lastx;
+				var	t	= .imageTop + y - lasty;
+				if(l>0)
+					l	= 0;
+				else if(l<.width-.imageWidth)
+					l	= .width - .imageWidth;
+				if(t>0)
+					t	= 0;
+				else if(t<.height-.imageHeight)
+					t	= .height - .imageHeight;
+				.setImagePos(l, t);
+				lastx	= x;
+				lasty	= y;
+			}
+		}
+	}
+
+	function onMouseUp(x, y, button, shift)
+	{
+		if(!showed)	return;	//	受付状態になければ無視する
+		if(isLeftDown)
+		{
+			if(Math.abs(mvsx-x)+Math.abs(mvsy-y)<5)
+				switchState();
+			isLeftDown	= false;
+		}
+	}
+
+	function onKeyDown(key, shift)
+	{
+		switch(key)
+		{
+		case VK_ESCAPE:
+		case VK_HOME:
+//		case VK_BACK:
+//		case VK_DELETE:
+			if(state==1)
+				switchState();
+			else
+				hide();
+			break;
+
+		case VK_RETURN:
+		case VK_SPACE:
+			switchState();
+			break;
+
+		case VK_UP:
+		case VK_LEFT:
+			onButtonDown(%[id:"prev"]);
+			break;
+
+		case VK_DOWN:
+		case VK_RIGHT:
+			onButtonDown(%[id:"next"]);
+			break;
+
+		default:
+			super.onKeyDown(key, shift, false);
+		}
+	}
+
+	function onJoyStick(trig)
+	{
+		if(trig & jsLeft)			onKeyDown(VK_LEFT);
+		else if(trig & jsRight)		onKeyDown(VK_RIGHT);
+		else if(trig & jsUp)		onKeyDown(VK_UP);
+		else if(trig & jsDown)		onKeyDown(VK_DOWN);
+		else if(trig & jsTrigger1)	onKeyDown(VK_RETURN);
+		else if(trig & jsTrigger2)	onKeyDown(VK_ESCAPE);
+		else						super.onJoyStick(trig, true);
+	}
+
+	function onTransitionCompleted(dest, src)
+	{
+		super.onTransitionCompleted(...);
+		layers[curlayer].focus();
+
+		startScroll();
+	}
+
+	function startScroll()
+	{
+		with(layers[curlayer])
+		{
+			//	サイズが大きい場合は、スクロールする
+			var upc	= scrollTotalTime / scrollInterval;	//	更新回数
+			xscroll	= .imageWidth>.width ? (.imageWidth - .width) / upc : 0;
+			yscroll	= .imageHeight>.height ? (.imageHeight - . height) / upc : 0;
+			if(xscroll+yscroll>0)
+			{
+				with(timer = new Timer(onScroll, ""))
+				{
+					.interval	= scrollInterval;
+					.enabled	= true;
+				}
+			}
+		}
+	}
+
+	function onScroll()
+	{
+		with(layers[curlayer])
+		{
+			var stop	= 0;
+			if(.width - .imageLeft> .imageWidth - xscroll)
+			{
+				.imageLeft	=  .width - .imageWidth;
+				stop++;
+			}
+			else
+				.imageLeft	-= xscroll;
+			if(.height - .imageTop > .imageHeight - yscroll)
+			{
+				.imageTop	= .height - .imageHeight;
+				stop++;
+			}
+			else
+				.imageTop	-= yscroll;
+			if(stop==2)
+				release(timer);
+		}
+	}
+
+	property state
+	{
+		setter(s)
+		{
+			s &= 1;
+			_state	= s;
+			buttons.setAll("opacity", 255 * s);
+		}
+		getter	{ return _state; }
+	}
+}
+
+class GalleryImageFlipLayer extends FadeLayer
+{
+	var owner;
+
+	function GalleryImageFlipLayer(win, par, owner)
+	{
+		super.FadeLayer(...);
+		name	= "画像表示レイヤー(flip)";
+
+		this.owner	= owner;
+		setPos(0, 0);
+		setImageSize(par.width, par.height);
+		setSizeToImageSize();
+		visible	= false;
+		opacity	= 255;
+	}
+
+	function finalize()
+	{
+		super.finalize(...);
+	}
+
+	function onButtonDown()	{ return owner.onButtonDown(...); }
+	function onMouseDown()	{ return owner.onMouseDown(...); }
+	function onMouseMove()	{ return owner.onMouseMove(...); }
+	function onMouseUp()	{ return owner.onMouseUp(...); }
+	function onKeyDown()	{ return owner.onKeyDown(...); }
+	function onJoyStick()	{ return owner.onJoyStick(...); }
+	function onTransitionCompleted()	{ return owner.onTransitionCompleted(...); }
+}
+
+/*----------------------------------------------------------------------------/
+/	
+/----------------------------------------------------------------------------*/
+@endif

@@ -1,0 +1,307 @@
+@if(__BARLAYER_DEFINED__==0)
+@set(__BARLAYER_DEFINED__=1)
+/*----------------------------------------------------------------------------/
+/	スクロールバーレイヤー
+/
+/		値を一定の範囲内で変更する
+/		変更時には登録されているオブジェクトの"onScroll"を呼び出す(新しい値で)
+/			target.onScroll(this, value);	//	bar自身と変化量を返す
+/----------------------------------------------------------------------------*/
+
+class BarLayer extends Layer
+{
+	var _total		= 100;	//	全体の値(最優先)
+	var _area		= 100;	//	表示領域に対応した値(中間)
+	var _current	= 0;	//	現在値(優先度最低)
+
+	var _mouseOn	= false;//	マウスがレイヤー上に存在する
+	var _catch		= false;//	マウスでバーのカーソルを保持している
+	var _last;				//	最終座標(verticalにより、x, yが変わる)
+
+	var barcolor	= 0x0080FF;	//	スライド部分の色
+	var basecolor	= 0x00FF80;	//	ベース部分の色
+	var disablecolor= 0x808000;	//	無効時の色
+
+	var vertical	= true;	//	縦横方向
+	var autohide	= true;	//	_total = _areaのときに非表示にするか
+
+	var target		= void;	//	スクロールバーに対応するオブジェクト
+
+	var scrolling	= 6;	//	マウスホイールの補正値
+
+	var thin		= 2;	//	ベースの細さ(大きくなれば細くなる)
+	var minimum		= 5;	//	値を変化させるための最低限の移動量
+
+	var _enabled	= true;	//	有効か？
+
+	var _r1, _r2;			//	スライダーのサイズ(範囲)
+	var sliderMin	= 5;	//	最小のスライダーサイズ
+
+	var cumulate	= 0;	//	スライダー移動量の蓄積
+
+	function BarLayer(win, par)
+	{
+		super.Layer(win, par);
+		name	= "スクロールバー";
+	}
+
+	function draw()
+	{
+		fillRect(0, 0, width, height, 0x00000000);
+
+		var	opa;
+		var bsc = basecolor;
+		var bc = barcolor;
+		if(!enabled)
+		{
+			opa	= 64;
+			bsc	= disablecolor;
+			bc	= disablecolor;
+		}
+		else if(focused || _mouseOn)
+			opa	= 128;
+		else
+			opa	= 64;
+
+		var i_rate	= _current / _total;
+		var a_rate	= _area / _total;
+		var l, w, t, h;
+		if(vertical)
+		{
+			colorRect(thin, 0, width-thin*2, height, bsc, opa);
+
+			l = 0, w = width;
+			t = int(i_rate * height);
+			h = int(a_rate * height);
+//			Debug.message("<"+name+": minimum="+sliderMin+" h="+h+"("+(h<minimum)+") t="+t);
+			if(h<sliderMin)
+			{
+				h	= sliderMin;
+				t	= (t+h > height) ? height-h : t;
+			}
+			_r1	= t;
+			_r2	= t+h;
+//			Debug.message(">"+name+": minimum="+sliderMin+" h="+h+"("+(h<minimum)+") t="+t);
+		}
+		else
+		{
+			colorRect(0, thin, width, height-thin*2, bsc, opa);
+
+			t = 0, h = height;
+			l = int(i_rate * width);
+			w = int(a_rate * width);
+			if(w<sliderMin)
+			{
+				w	= sliderMin;
+				l	= (l+w > width) ? width-w : l;
+			}
+			_r1	= l;
+			_r2	= l+w;
+		}
+		colorRect(l, t, w, h, bc, 128+opa);
+	}
+
+	function setRange(t, a)
+	{
+		total	= t;
+		area	= a;
+	}
+
+	function onPaint()
+	{
+		super.onPaint(...);
+		draw();
+	}
+
+	function onFocus()
+	{
+		super.onFocus(...);
+		update();
+	}
+
+	function onMouseDown(x, y)
+	{
+		super.onMouseDown(...);
+
+		var v = vertical ? y : x;
+
+		if(_r1 > v)			value	-= _area;
+		else if(_r2 < v)	value	+= _area;
+		else				_catch	= true;
+
+		_last	= vertical ? y : x;
+	}
+
+	function onMouseMove(x, y)
+	{
+		super.onMouseMove(...);
+		if(enabled && _catch)
+		{
+			cumulate += vertical ? (y - _last) : (x - _last);
+			var mv = cumulate;
+
+			var	w	= vertical ? height : width;
+
+			var onevalue = w / _total;
+			var val = 0;
+			while(mv>onevalue)
+			{
+				//	下方向
+				val++;
+				mv -= onevalue;
+			}
+			onevalue	= -onevalue;
+			while(mv<onevalue)
+			{
+				//	上方向
+				val--;
+				mv -= onevalue;
+			}
+			value	+= val;
+
+			_last	= vertical ? y : x;
+			cumulate= mv;
+			update();
+		}
+	}
+
+	function onMouseUp()
+	{
+		super.onMouseUp(...);
+		_catch	= false;
+		cumulate	= 0;
+	}
+
+	function onMouseWheel(shift, delta)
+	{
+		super.onMouseWheel(...);
+		if(enabled)
+		{
+			value += -delta \ 120 * scrolling;
+			update();
+		}
+	}
+
+	function onMouseEnter()
+	{
+		super.onMouseEnter(...);
+		_mouseOn	= true;
+		dm("bar enter");
+		if(enabled)
+			update();
+	}
+
+	function onMouseLeave()
+	{
+		super.onMouseLeave(...);
+		_mouseOn	= false;
+		dm("bar leave");
+		if(enabled)
+			update();
+	}
+
+	property value
+	{
+		setter(v)
+		{
+			if(_current == v)	return;
+			if(v+_area>_total)
+			{
+				//	移動すると全体の値を超えてしまう
+				_current	= _total - _area;
+			}
+			else if(v<0)
+			{
+				//	0以下の値
+				_current	= 0;
+			}
+			else
+				_current	= v;
+			if(target != void && typeof target.onScroll != "undefined")
+				target.onScroll(this, _current);
+			update();
+		}
+		getter
+		{
+			return _current;
+		}
+	}
+
+	property area
+	{
+		setter(a)
+		{
+			if(autohide)	visible	= true;	//	表示されるチャンス
+			if(a>=_total)
+			{
+				//	一部分が全体を超えてしまう
+				_area	= _total;
+				value	= 0;
+				if(autohide)	visible	= false;	//	_area = _totalなので表示しない
+			}
+			else if(a+_current>_total)
+			{
+				//	現在値のままでは全体値を超えてしまう
+				_area	= a;
+				value	= _total - a;
+			}
+			else
+				_area	= a;
+			update();
+		}
+		getter
+		{
+			return _area;
+		}
+	}
+
+	property total
+	{
+		setter(t)
+		{
+			if(autohide)	visible	= true;	//	表示されるチャンス
+			if(t==0)		t	= 1;		//	0にしてはいけない
+			_total	= t;
+			if(t<_area)
+			{
+				//	一部分の方が全体値より大きくなった
+				_area	= t;
+				value	= 0;
+				if(autohide)	visible	= false;	//	_area = _totalなので表示しない
+			}
+			else if(t<_area+_current)
+			{
+				//	現在値のままでは全体値を超えてしまう
+				value	= t - _area;
+			}
+			update();
+		}
+		getter
+		{
+			return _total;
+		}
+	}
+
+	property layertype
+	{
+		getter
+		{
+			return "BarLayer";
+		}
+	}
+
+	property enabled
+	{
+		setter(b)
+		{
+			_enabled	= b;
+			update();
+		}
+		getter
+		{
+			return _enabled;
+		}
+	}
+}
+
+@endif

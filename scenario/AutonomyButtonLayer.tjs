@@ -1,0 +1,142 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) TYPE-MOON All Rights Reserved.
+/		
+/----------------------------------------------------------------------------*/
+@if(__AUTONOMYBUTTONLAYER_DEFINED__==0)
+@set(__AUTONOMYBUTTONLAYER_DEFINED__=1)
+
+class AutonomyButtonLayer extends AutonomyLayer
+{
+	var _buttonstate;
+	var id;
+	var isLoaded;
+
+	function AutonomyButtonLayer(win, par, id)
+	{
+		super.AutonomyLayer(...);
+		this.id		= id;
+		_buttonstate= 0;
+		isLoaded	= false;
+		focusable	= true;
+		name		= "AutonomyButtonLayer";
+	}
+
+	function finalize()
+	{
+		super.finalize();
+	}
+
+	function construct(per)
+	{
+		if(state==0)
+		{
+			loadImages(storage, colorkey);
+			dm("before width = "+width);
+			setSize(imageWidth\5, imageHeight);		//	none, enter, push, on, on-enter
+			dm("after width = "+width);
+			starttick	= System.getTickCount();	//	読み込み終わったら初期化
+			state	= 1;
+			isLoaded= true;
+			if(onload != void)
+				onload();	//	読み込みが終わった時呼ばれる
+		}
+		else
+			super.construct(per);
+	}
+
+	function on()
+	{
+		buttonstate	= 3;
+		if(typeof parent.onButtonDown != "undefined")
+			parent.onButtonDown(this);
+	}
+
+	function off()
+	{
+		buttonstate	= 0;
+	}
+
+	function onFocus()
+	{
+		buttonstate++ if buttonstate==0 || buttonstate==3;
+	}
+
+	function onBlur()
+	{
+		buttonstate-- if buttonstate==1 || buttonstate==4;
+	}
+
+	function onMouseEnter()
+	{
+		super.onMouseEnter(...);
+		focus	= true;
+	}
+
+	function onMouseLeave()
+	{
+		super.onMouseLeave(...);
+		focus	= false;
+	}
+
+	function onMouseDown(x, y, button, shift)
+	{
+		super.onMouseDown(...);
+		if(button == mbLeft)
+			buttonstate++ if buttonstate==2 || buttonstate==5;
+		else
+			parent.onMouseDown(...);
+	}
+
+	function onMouseUp(x, y, button, shift)
+	{
+		super.onMouseUp(...);
+		if(button == mbLeft)
+			buttonstate = buttonstate==2 ? on() : off();
+		else
+			parent.onMouseUp(...);
+	}
+
+	function onKeyDown(key, shift)
+	{
+		var process	= true;
+		if(!shift)
+		{
+			switch(key)
+			{
+			case VK_RETURN:
+			case VK_SPACE:
+				onMouseDown(,, mbLeft);
+				onMouseUp(,, mbLeft);
+				process	= false;
+				break;
+
+			case VK_ESCAPE:
+			case VK_BACK:
+			case VK_DELETE:
+			case VK_HOME:
+				onMouseDown(,, mbRight);
+				process	= false;
+				break;
+			}
+		}
+		super.onKeyDown(key, shift, process);
+	}
+
+	property buttonstate
+	{
+		setter(b)
+		{
+			if(_buttonstate != b)
+			{
+				_buttonstate	= b;
+				imageLeft	= (b>=5 ? 2 : b) * width if isLoaded;
+			}
+		}
+		getter	{ return _buttonstate; }
+	}
+}
+
+/*----------------------------------------------------------------------------/
+/	
+/----------------------------------------------------------------------------*/
+@endif

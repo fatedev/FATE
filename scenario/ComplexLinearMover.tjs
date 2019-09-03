@@ -1,0 +1,115 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) TYPE-MOON All Rights Reserved.
+/		複合型線形移動実行クラス
+/----------------------------------------------------------------------------*/
+@if(__COMPLEXLINEARMOVER_DEFINED__==0)
+@set(__COMPLEXLINEARMOVER_DEFINED__=1)
+
+/*
+	//	使い方
+	with(mover = new ComplexLinearMover(layer))
+	{
+		.init(800, 0, onMoveFinished);	//	800msで実行、加減速はなし、終了後"onMoveFinished"を実行
+		.add("left", 0, 640);			//	leftを0から640に変化
+		.add("top", 0, 480);			//	topを0から480に変化
+		.start(delay);					//	処理を開始する。delayを設定すれば開始時刻を遅らせられる
+	}
+
+	function onMoveFinished()
+	{
+		invalidate mover;	//	移動体を削除(多分可能)
+	}
+
+	//	メモ
+	addとexecuteを変更することで、線形でない複合移動クラスが作成できそう
+*/
+class ComplexLinearMover
+{
+	var target;
+
+	var datas;
+	var time, accel;
+	var delay;
+
+	var lasttick, starttick;
+	var doing;
+
+	var endfunc;
+
+	function ComplexLinearMover(target)
+	{
+		this.target	= target;
+	}
+
+	function finalize()
+	{
+		stop();
+	}
+
+	function init(time=300, accel=0, func=void)
+	{
+		stop();
+		datas	= [];
+
+		this.time	= time;
+		this.accel	= accel;
+		this.endfunc= func;
+	}
+
+	function add(name, start, end)
+	{
+		datas.add([name, start, end]);
+	}
+
+	function start(delay=0)
+	{
+		lasttick = starttick = System.getTickCount() + delay;
+		System.addContinuousHandler(handler);
+		doing	= true;
+	}
+
+	function handler(tick)
+	{
+		if(tick < lasttick)	return;
+		lasttick	= tick;
+
+		var past = tick - starttick;
+		if(past>0)
+		{
+			if(past<=time)
+				execute(calcAccel(past / time, accel));
+			else
+				finish();
+		}
+	}
+
+	function execute(per)
+	{
+		var trg	= target;
+		var ds	= datas;
+		for(var i=0; i<ds.count; i++)
+			trg[ds[i][0]]	= ds[i][1] + int((ds[i][2] - ds[i][1]) * per + 0.5);
+	}
+
+	function finish()
+	{
+		execute(1.0) if doing;
+		stop();
+	}
+
+	function stop()
+	{
+		if(doing)
+		{
+			System.removeContinuousHandler(handler);
+			doing	= false;
+			if(endfunc!=void)
+				endfunc(this);
+		}
+	}
+}
+
+/*----------------------------------------------------------------------------/
+/	
+/----------------------------------------------------------------------------*/
+@endif

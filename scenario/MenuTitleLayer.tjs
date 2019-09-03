@@ -1,0 +1,120 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) TYPE-MOON All Rights Reserved.
+/		メニュー用タイトルレイヤー
+/----------------------------------------------------------------------------*/
+@if(__MENUTITLELAYER_DEFINED__==0)
+@set(__MENUTITLELAYER_DEFINED__=1)
+
+Scripts.execStorage("subroutine.tjs");
+Scripts.execStorage("ComplexLinearMover.tjs");
+
+class MenuTitleLayer extends KAGLayer
+{
+	var shadowlayer;
+	var underlinelayer;
+	var slidetime	= 800;
+	var mover;
+
+	var offsetx, offsety = 50;
+
+	var noclear	= false;
+	var savedleft, savedtop;
+
+	function MenuTitleLayer(win, par, img, l, t, bartype, bartop)
+	{
+		super.KAGLayer(...);
+		opacity	= 0;
+		loadImages(img);
+		setSizeToImageSize();
+		setPos(savedleft=l, savedtop=t);
+		.hitThreshold	= 256;
+		visible	= true;
+
+		with(shadowlayer = new global.Layer(win, par))
+		{
+			.setSize(width, height);
+			.copyRect(0, 0, this, 0, 0, width, height);
+			.hitThreshold	= 256;
+			.opacity	= 0;
+			.visible	= true;
+		}
+		with(underlinelayer = new global.Layer(win, par))
+		{
+			.loadImages("ex_bar0"+bartype);
+			.setSizeToImageSize();
+			.setPos(-.width, bartop);
+			.hitThreshold	= 256;
+			.opacity	= 0;
+			.visible	= true;
+		}
+	}
+
+	function finalize()
+	{
+		release(mover);
+		release(underlinelayer);
+		release(shadowlayer);
+		super.finalize(...);
+	}
+
+	function open(delay)
+	{
+		//	開く時、本体は斜め上から出て、文字の影が追いかけるように現われる
+		//	画面内に完全に入るように移動する
+		mover	= new ComplexLinearMover(this) if mover==void;
+		with(mover)
+		{
+			.init(slidetime, -2);
+			.add("left", -width\2, left);
+			.add("top", top-offsety, top);
+			.add("opacity", 64, 255);
+			.add("shadowleft", -width, left);
+			.add("shadowtop", top+offsety, top);
+			.add("shadowopacity", 192, 0);
+			.add("underlineleft", underlinelayer.left, 0);
+			.add("underlineopacity", 0, 255);
+			.start(delay);
+		}
+	}
+
+	function close(delay)
+	{
+		//	閉じる時、出てきたときと逆に隠れる
+		//	画面外まで移動する
+		mover	= new ComplexLinearMover(this) if mover==void;
+		with(mover)
+		{
+			.init(slidetime, 2, onInnerClosed);
+			.add("left", left, left+width\2);
+			.add("top", top, top+offsety);
+			.add("opacity", 255, 0);
+			.add("shadowleft", left, left+width\2);
+			.add("shadowtop", top, top-offsety);
+			.add("shadowopacity", 192, 0);
+			.add("underlineleft", underlinelayer.left, -underlinelayer.width);
+			.add("underlineopacity", 255, 0);
+			.start(delay);
+		}
+	}
+
+	function resetPos()
+	{
+		setPos(savedleft, savedtop);
+	}
+
+	function onInnerClosed()
+	{
+		invalidate this if !noclear;
+	}
+
+	property shadowleft			{ setter(l){ shadowlayer.left		= l; } }
+	property shadowtop			{ setter(t){ shadowlayer.top		= t; } }
+	property shadowopacity		{ setter(o){ shadowlayer.opacity	= o; } }
+	property underlineleft		{ setter(l){ underlinelayer.left	= l; } }
+	property underlineopacity	{ setter(o){ underlinelayer.opacity	= o; } }
+}
+
+/*----------------------------------------------------------------------------/
+/	
+/----------------------------------------------------------------------------*/
+@endif

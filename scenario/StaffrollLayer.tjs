@@ -1,0 +1,62 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) TYPE-MOON All Rights Reserved.
+/		スタッフロールプラグイン
+/----------------------------------------------------------------------------*/
+@if(__STAFFROLLLAYER_DEFINED__==0)
+@set(__STAFFROLLLAYER_DEFINED__=1)
+
+/*-----------------------------------------------------------------------------
+/	スタッフロールスクリプトを解析する
+/
+/	※スタッフロールスクリプト
+/	init	- 初期設定を行うためのタグ
+/		lasty	: 最終の名前が停止する高さ
+/		speed	: スクロール速度(per 1sec)
+/		spacing	: 名前間の隙間
+/	name	- 名前の定義
+/		text	: 表示する文字列
+/		storage	: 文字列の代わりに使う画像
+/		left	: 表示オフセット
+/	interval- 直前の文字を表示してからどれくらい空けるか
+/		y		: ピクセル単位で指定
+/		time	: ミリ秒単位で指定
+/	image	- あらわれては消える画像
+/		left,top: 表示位置
+/		storage	: 表示する画像
+/		time	: 表示時間
+/		fadetime: フェードイン、アウトの時間
+/		method	: どのようにフェードしてくるか
+/----------------------------------------------------------------------------*/
+function parseStaffrollScript(storage)
+{
+	var lines	= [].load(storage);
+	for(var i=0; i<lines.count; i++)
+	{
+		if(lines[i][0]=="@")
+		{
+			//	分割
+			var values	= [].split(/[ =]/, lines[i].substr(1),, true);
+			var cmd		= values[0];
+			var params	= %[];
+			for(var j=1; j<values.count; j+=2)
+				params[values[j]]	= values[j+1];
+
+			switch(cmd)
+			{
+			case "init":
+				break;
+			case "name":
+				break;
+			case "interval":
+				break;
+			case "image":
+				break;
+			}
+		}
+	}
+}
+
+/*----------------------------------------------------------------------------/
+/	
+/----------------------------------------------------------------------------*/
+@endif

@@ -1,0 +1,150 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) TYPE-MOON All Rights Reserved.
+/		自律的に行動するレイヤー(とはいっても、自分で読み込んで現れる程度)
+/----------------------------------------------------------------------------*/
+@if(__AUTONOMYLAYER_DEFINED__==0)
+@set(__AUTONOMYLAYER_DEFINED__=1)
+
+class AutonomyLayer extends KAGLayer
+{
+	var state;
+
+	var storage;
+	var colorkey;
+	var time;
+	var accel;
+
+	var starttick;
+	var startopacity, endopacity;
+	var doing;
+
+	var lasttime	= 300;
+	var lastaccel	= 0;
+
+	var onload;
+
+	function AutonomyLayer(win, par)
+	{
+		super.KAGLayer(...);
+		name	= "AutonomyLayer";
+	}
+
+	function finalize()
+	{
+		stop();
+		super.finalize(...);
+	}
+
+	function loadAndShow(storage, colorkey=clNone, time=lasttime, accel=lastaccel)
+	{
+		this.storage	= storage;
+		this.colorkey	= colorkey;
+		lasttime	= this.time		= time;
+		lastaccel	= this.accel	= accel;
+
+		starttick	= System.getTickCount();
+		System.addContinuousHandler(handler);
+		startopacity= opacity	= 0;
+		endopacity	= 255;
+		state	= 0;
+		doing	= true;
+		visible	= true;	//	現われるにしろ消えるにしろ、表示されていないとダメ
+		name	+= "("+storage+")";
+	}
+
+	function hide(time=lasttime, accel=lastaccel)
+	{
+		if(visible)
+		{
+			lasttime	= this.time		= time;
+			lastaccel	= this.accel	= accel;
+
+			starttick	= System.getTickCount();
+			System.addContinuousHandler(handler);
+			startopacity= opacity;
+			endopacity	= 0;
+			state	= 1;
+			doing	= true;
+			visible	= true;
+		}
+	}
+
+	function change(storage, colorkey=clNone, time=lasttime, accel=lastaccel)
+	{
+		this.storage	= storage;
+		this.colorkey	= colorkey;
+		hide(time, accel);
+		state	= 2;
+	}
+
+	function handler(tick)
+	{
+		var past = tick - starttick;
+		if(past>time && (state!=0 || state!=3))
+			finish();
+		else
+			construct(calcAccel(past/time, accel));
+	}
+
+	function construct(per)
+	{
+		switch(state)
+		{
+		case 3:	//	再表示
+		case 0:	//	読み込み前
+			loadImages(storage, colorkey);
+			setSizeToImageSize();
+			starttick	= System.getTickCount();	//	読み込み終わったら初期化
+			state	= 1;
+			if(onload != void)
+				onload();	//	読み込みが終わった時呼ばれる
+			break;
+
+		case 1:	//	表示/消去中
+		case 2:	//	再表示のための消去
+			opacity	= startopacity + int((endopacity - startopacity) * per);
+			break;
+
+		}
+	}
+
+	function finish()
+	{
+		switch(state)
+		{
+		case 0:
+		case 3:
+			construct();	//	読み込みも終わっていないのでやっちゃう
+			break;
+		case 2:
+			startopacity= opacity;
+			endopacity	= 255;
+			state	= 3;
+			return;
+		}
+		opacity	= endopacity;
+		stop();
+	}
+
+	function stop()
+	{
+		if(doing)
+		{
+			System.removeContinuousHandler(handler);
+			doing	= false;
+			if(opacity<1)
+				visible	= false;
+		}
+	}
+
+	function onMouseDown(x, y, button, shift)
+	{
+		if(button == mbRight)
+			parent.onMouseDown(...);
+	}
+}
+
+/*----------------------------------------------------------------------------/
+/	
+/----------------------------------------------------------------------------*/
+@endif

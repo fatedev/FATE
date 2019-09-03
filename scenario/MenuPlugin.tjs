@@ -1,0 +1,107 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) TYPE-MOON All Rights Reserved.
+/		メニュー用プラグイン
+/----------------------------------------------------------------------------*/
+@if(__MENUPLUGIN_DEFINED__==0)
+@set(__MENUPLUGIN_DEFINED__=1)
+
+//	メニューが現れる/消える時間
+var defaultMenuAppearTime	= 300;
+var defaultMenuAppearAccel	= 0;
+
+class MenuPlugin extends KAGPlugin
+{
+	var window;		//	親となるウィンドウ
+	var menulayer;	//	タイトルメニューレイヤー
+	var state;		//	メニューの状態(0:開いてる/1:閉じてる/2:閉じ中)
+	var triggername;//	トリガー名
+
+	function MenuPlugin(window)
+	{
+		super.KAGPlugin();
+		this.window	= window;
+
+		menulayer	= void;
+		state		= 1;	//	閉じてる
+		triggername	= "menuend";
+	}
+
+	function finalize()
+	{
+		invalidate menulayer if menulayer!==void;
+		super.finalize(...);
+	}
+
+	function createMenuLayer(window, parent, plugin)
+	{
+		return void;
+	}
+
+	function show(time=defaultMenuAppearTime, accel=defaultMenuAppearAccel)
+	{
+		if(state==1)
+		{
+			if((menulayer = createMenuLayer(window, window.fore.base, this))!=void)
+			{
+				if(triggername!="")
+					window.waitTrigger(%[name:triggername]);
+				menulayer.show(time, accel);
+				state	= 0;
+			}
+		}
+	}
+
+	function hide(time=defaultMenuAppearTime, accel=defaultMenuAppearAccel)
+	{
+		if(state==0)
+		{
+			menulayer.hide(time, accel, onMenuClosed);
+			state	= 2;	//	閉じる途中
+		}
+	}
+
+	//	メニューが完全に閉じられたときに呼ばれる
+	function onMenuClosed()
+	{
+		invalidate menulayer if menulayer!==void;
+		menulayer	= void;
+		if(triggername!="")
+			window.trigger(triggername);
+		state	= 1;	//	閉じられた
+	}
+
+	function onStore(f, elm)
+	{
+	}
+
+	function onRestore(f, clear, elm)
+	{
+		// すべての、栞を読み出すときに呼ばれる
+		hide();	//	状態が復元されるので閉じる
+	}
+
+	function onStableStateChanged(stable)
+	{
+	}
+
+	function onMessageHiddenStateChanged(hidden)
+	{
+	}
+
+	function onCopyLayer(toback)
+	{
+	}
+
+	function onExchangeForeBack()
+	{
+	}
+
+	function onSaveSystemVariables()
+	{
+	}
+}
+
+/*-----------------------------------------------------------------------------
+/	End of File
+/----------------------------------------------------------------------------*/
+@endif

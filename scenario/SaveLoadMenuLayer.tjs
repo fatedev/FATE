@@ -1,0 +1,1620 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) 1999-2002 TYPE-MOON All Rights Reserved.
+/		セーブ/ロードメニュー
+/----------------------------------------------------------------------------*/
+@if(__SAVELOADMENULAYER_DEFINED__==0)
+@set(__SAVELOADMENULAYER_DEFINED__=1)
+
+Scripts.execStorage("ExButtonLayer.tjs");
+Scripts.execStorage("ExtendMenuLayer.tjs");
+Scripts.execStorage("BasicAnimeLayer.tjs");
+Scripts.execStorage("PopUpLayer.tjs");
+
+var saveDataPos		= [ 11, 59, 125, 95 ];	//	baseX, baseY, stepX, stepY
+var saveDataCount	= 20;					//	1ページあたりのデータ数
+var savePageCount	= 15;					//	ページ数
+var saveDataSidewaysCount	= 5;	//	横方向の数
+var saveDataLengthwiseCount	= 4;	//	縦方向の数
+var thumbnailPos	= [ 2, 2];
+
+var unmovedLimit	= 5;
+
+var dataidtop		= "data.";
+var pageidtop		= "page.";
+
+Plugins.link("util.dll");	//	IME制御
+
+class SaveLoadMenuLayer extends ExtendMenuLayer
+{
+	var state;
+
+	var _page = 0;		//	現在開いているページ
+	var mode;			//	"save"/"load"
+	var nodataImage;
+	var dataBaseImage;
+	var dataCursorImage;
+
+	var title;		//	タイトルレイヤー
+	var datas;		//	セーブデータボタン
+	var pages;		//	セーブページボタン
+	var retbutton;	//	戻るボタン
+	var info;		//	セーブ情報レイヤー
+	var reserve;	//	保留用レイヤー
+
+	var lasttime;
+	var lastaccel;
+
+	var bgcolor		= 0x80000000;
+
+	var titleImage	= "_title";
+	var titlePos	= [ 0, 4 ];
+
+	var saveDataBaseImage	= "_ウィンドウ枠";
+	var saveDataCursorImage	= "_ウィンドウカーソル";
+	var saveDataNoImage		= "_nodata";
+
+	var savePagePos		= [ 16, 447, 41 ];
+
+	var returnImage		= "conf_back";
+	var returnPos		= [ 660, 441 ];
+
+	var infotime	= 200;
+	var infoaccel	= -2;
+
+	var defaulttime	= 300, lasttime;
+	var defaultaccel= 0, lastaccel;
+
+	var loadNo		= -1;
+
+	var showed;
+	var lastSelectData;	//	最後に選択したセーブデータ
+
+	function SaveLoadMenuLayer(win, par, mode)
+	{
+		dm("create "+mode+" menu layer");
+		super.ExtendMenuLayer(...);
+		global.slm	= this;
+
+		if(mode=="save")
+			win.lockSnapshot();	//	スナップショットを取る
+		this.mode	= mode;
+
+		name	= mode+"メニュー";
+		var w, h;
+		setSize(w = win.scWidth, h = win.scHeight);
+		fillRect(0, 0, w, h, bgcolor);	//	透明
+		hitType		= htMask;
+		hitThreshold= 255;	//	すべて透過
+
+		var layer;
+		layer = title	= new global.Layer(win, this);	//	タイトル
+		layer.loadImages(mode+titleImage);
+		layer.setSizeToImageSize();
+		layer.setPos(titlePos[0], titlePos[1]);
+		layer.hitType		= htMask;
+		layer.hitThreshold	= 255;		//	すべて透過
+		layer.opacity	= 255;
+		layer.visible	= true;
+
+		//	各画像リソース読み込み
+		nodataImage	= new global.Layer(win, this);
+		nodataImage.loadImages(mode+saveDataNoImage);
+		nodataImage.opacity	= 128;
+
+		dataBaseImage	= new global.Layer(win, this);
+		dataBaseImage.loadImages(mode+saveDataBaseImage);
+
+		dataCursorImage	= new global.Layer(win, this);
+		dataCursorImage.loadImages(mode+saveDataCursorImage);
+
+		//	セーブデータボタン作成
+		datas	= new global.SaveDataLayer(win, this, 0);
+		for(var i=1; i<saveDataCount; i++)
+			datas.add(i);
+
+		//	セーブデータページボタン作成
+		var l = savePagePos[0];
+		var t = savePagePos[1];
+		var inc = savePagePos[2];
+		var pid = pageidtop;
+		var img = mode+"_";
+//		var it = pages	= new global.ExButtonLayer(win, this, pid+0, l, t, img+"01");
+//		it.changeRadioButton(true);
+		var it;
+		for(var i=0; i<savePageCount; i++)
+		{
+			if(i<1)
+				it = pages	= new global.ExButtonLayer(win, this, pid+0, l, t, img+"01");
+			else if(i<9)
+				it = pages.add(pid+i, l, t, img+"0"+(i+1));
+			else
+				it = pages.add(pid+i, l, t, img+(i+1));
+			with(it)
+			{
+				.pageno	= i;
+				.changeRadioButton(true);
+				.onKeyDown = function(key, shift)
+				{
+					var par = parent;
+
+					switch(key)
+					{
+					case VK_UP:
+						par.datas.get(dataidtop+(+pageno\3+(saveDataCount-saveDataSidewaysCount))).
+							focus();
+						return;
+					case VK_DOWN:
+						if(par.info.focusable)
+							par.info.comment.focus();	//	コメントへ
+						else
+							par.retbutton.focus();
+						return;
+					case VK_LEFT:
+						if(pageno<1)
+						{
+							par.retbutton.focus();
+							return;
+						}
+						break;
+					case VK_RIGHT:
+						if(pageno>=savePageCount-1)
+						{
+							par.retbutton.focus();
+							return;
+						}
+						break;
+					case VK_PRIOR:
+						par.page--;
+						return;
+					case VK_NEXT:
+						par.page++;
+						return;
+					}
+					global.ExButtonLayer.onKeyDown(key, shift, true);
+				} incontextof it;
+				.onFocus = function()
+				{
+					//	フォーカスを得たら、対応するページを開く
+					parent.page	= pageno;
+					global.ExButtonLayer.onFocus(...);
+				} incontextof it;
+			}
+			l += inc;
+		}
+
+		//	セーブ情報レイヤー
+		info = new SaveDataInfoLayer(win, this);
+
+		//	戻るボタン
+		with(retbutton = new global.ExButtonLayer(win, this, "return", returnPos[0], returnPos[1],
+			returnImage, "戻ります。"))
+		{
+			.name	= "back";
+			.mode	= 3;
+			.readyVisible();
+			.onKeyDown = function(key, shift)
+			{
+				var par = parent;
+				switch(key)
+				{
+				case VK_UP:
+					par.datas.get(dataidtop+(saveDataCount-1)).focus();	//	最後のデータ
+					return;
+				case VK_LEFT:
+					par.pages.get(pageidtop+par.page).focus();	//	現在のページ
+					return;
+				case VK_DOWN:
+					par.info.cancel.focus();
+					return;
+				}
+				global.ExButtonLayer.onKeyDown(key, shift, true);
+			} incontextof retbutton;
+		}
+
+		//	保留レイヤー
+		reserve	= [];
+
+		//	最後に開いていたページを開く
+		page	= sf.lastSavePage!=void ? +sf.lastSavePage : 0;
+
+		state	= mode;
+		changeFocusable();	//	非選択中にする。
+	}
+
+	function finalize()
+	{
+		for(var i=0; i<reserve.count; i++)
+			release(reserve[i]);
+		reserve.clear();
+		release(info);
+		release(retbutton);
+		release(pages);
+		release(datas);
+		release(dataCursorImage);
+		release(dataBaseImage);
+		release(nodataImage);
+		release(title);
+
+		if(mode=="save")
+			window.unlockSnapshot() if window.snapshotLockCount>0;
+
+		sf.lastSavePage	= +page;
+
+		var num = loadNo;
+		super.finalize(...);
+
+		try{
+			window.loadBookMark(num) if(num>=0);	//	しおりが指定されていたらロードする
+		}
+		catch(e)
+		{
+			//	ロードに失敗
+			Debug.logAsError();
+			var event_disabled	= System.eventDisabled;
+			System.eventDisabled= true;
+			var msg	= "下記の理由でセーブデータのロードに失敗しました。\n\n--理由--\n"+e.message+
+				"\n--------\n\nこのセーブデータは使えない可能性が高いので消去してください。\n\n"+
+				"セーブデータファイル: \""+
+				Storages.getLocalName(window.getBookMarkFileNameAtNum(num))+"\"";
+			System.inform(msg);
+			System.eventDisabled= event_disabled;
+			window.goToStart();
+			return true;
+		}
+	}
+
+	function show(time=defaulttime, accel=defaultaccel)
+	{
+		if(!showed)
+		{
+			showed	= true;
+			super.show(time, accel);
+
+			pages.get(pageidtop+page).on();
+			delayFocus(50, datas);
+			//	↑こうしておかないと、タイトルのボタンからフォーカスを取り上げられない
+
+			lasttime	= time;
+			lastaccel	= accel;
+
+			if(mode=="save")
+			{
+				moveCursor(this, 323, 248);
+				delayFocus(50, datas);
+				//	↑こうしておかないと、タイトルのボタンからフォーカスを取り上げられない
+			}
+			else
+			{
+				var btn = datas.get(dataidtop+(+sf.lastSaveData));
+				with(btn)
+					moveCursor(this, .left+.width\2, .top+.height\2);
+				delayFocus(50, btn);
+			}
+		}
+	}
+
+	function hide()
+	{
+		if(showed)
+		{
+			showed	= false;
+			enabledIME(false);	//	IMEのOFF
+			super.hide(...);
+		}
+	}
+
+	function swapSaveData(a, b)
+	{
+		dm("swap save data: "+a+" <-> "+b);
+		//	選択状態はリセット
+		releaseSavedata();
+
+		//	保留中のデータに入れ替えるデータが含まれていないか？
+		for(var i=0; i<reserve.count; i++)
+		{
+			dm(i+": "+reserve[i].savedatano);
+			if(reserve[i].savedatano==a || reserve[i].savedatano==b)
+			{
+				dm("remove reserve["+i+"] = "+reserve[i].savedatano);
+				removeReserve(reserve[i]);
+				i--;	//	削除して全体数が減ったので、カウンタを戻す
+			}
+		}
+
+		//	aとbのデータを入れ替える
+//		dm("セーブデータの入れ替え: "+a+"<->"+b);
+		swapSnFn(a, b);	//	変換行列を入れ替える
+		var dano = a - baseDataNo;	//	画面内でのボタン番号
+		var dbno = b - baseDataNo;
+		var aok = dano>=0 && dano<saveDataCount;
+		var bok = dbno>=0 && dbno<saveDataCount;
+		if(aok)
+		{
+			var ta = datas.get(dataidtop+dano);		//	データボタンを取得
+			if(bok)	//	どちらのセーブデータも画面内
+			{
+				//	同じページ内で移動
+				var tb = datas.get(dataidtop+dbno);
+				ta.moveTo(dbno);
+				tb.moveTo(dano);
+				ta.name <-> tb.name;	//	nameも入れ替える
+			}
+			else	//	最初のデータだけ画面内
+				ta.reload();	//	変更後のサムネールを取得
+		}
+		else if(bok)
+		{
+			datas.get(dataidtop+dbno).reload();	//	変更後のサムネールを取得
+		}
+	}
+
+	function reserveSaveData(no, img)
+	{
+		//	他のページに移動させるセーブデータを保持するためのレイヤー
+		var i;
+		reserve.add(new SDReserveLayer(window, this, no, img));
+		dm("reserve No."+no+" = "+(reserve.count-1));
+	}
+
+	function isAlreadyReserved(no)
+	{
+		//	既に保留状態にあるか？
+		for(var i=0; i<reserve.count; i++)
+		{
+			if(reserve[i].savedatano == no)
+				return true;
+		}
+		return false;
+	}
+
+	function removeReserve(obj)
+	{
+		//	保留しておいたレイヤーを破棄
+		for(var i=0; i<reserve.count; i++)
+		{
+			//	番号とオブジェクト自身のチェックを行う
+			if(reserve[i] == obj)
+			{
+				obj.hide(200, 2, onChildClose);
+				reserve.erase(i);	//	リストから除外
+				return;
+			}
+		}
+	}
+
+	function closeThis(withparent=false)
+	{
+		parent.closeChild(this, withparent);
+	}
+
+	function releaseSavedata()
+	{
+		//	固定したセーブデータを離す
+		if(state=="info")
+		{
+			changeFocusable(false);		//	フォーカス変更
+			info.saveComment();	//	情報レイヤーが表示されていたら、コメントを保存する
+			state			= mode;
+			info.opacity	= 128;
+			info.hitThreshold	= 256;	//	イベント透過
+//			window.mouseArea= void;
+		}
+	}
+
+	function changeFocusable(selected=false, unselected)
+	{
+		//	選択中はデータ、ページのボタンをフォーカスできない
+		//	非選択時は詳細情報をフォーカスできない
+		if(unselected===void)
+			unselected	= !selected;	//	指定されてない時は逆にする
+		if(selected)
+		{
+			info.focusable	= selected;
+			if(mode=="load")
+				info.load.focus();
+			else
+				info.comment.focus();
+
+			itemFocusable(pages, unselected);
+			retbutton.focusable	= unselected;
+			itemFocusable(datas, unselected);
+		}
+		else
+		{
+			info.focusable	= selected;
+
+			itemFocusable(datas, unselected);
+			itemFocusable(pages, unselected);
+			retbutton.focusable	= unselected;
+
+			if(info.datano>=0)
+			{
+				try
+				{
+					with(datas.get(dataidtop+(info.datano%saveDataCount)))
+					{
+						.focus();
+						.state	= 1;
+					}
+				}
+				catch(e)
+				{
+					return true;
+				}
+			}
+		}
+	}
+
+	function itemFocusable(items, focusable)
+	{
+		while(items!=void)
+		{
+			items.focusable	= focusable;
+			items	= items.bros;
+		}
+	}
+
+	function onButtonEnter(btn)
+	{
+		if(state != "info")
+		{
+			var param = [].split(".", btn.id);
+			info.datano = page * saveDataCount + +param[1];
+		}
+	}
+
+	function onButtonDown(btn)
+	{
+		var param = [].split(".", btn.id);
+		switch(param[0])
+		{
+		case "data":		//	セーブデータをクリック
+			datas.off(btn);			//	これ以外をOFFにする
+			//	セーブ情報を開く
+			var no = page*saveDataCount+(+param[1]);
+			info.datano	= no;
+			var win = window;
+			//	セーブメニューであるか、データファイルが存在する場合に選択可能
+			if(mode=="save" ||
+				Storages.isExistentStorage(win.getBookMarkFileNameAtNum(info.fileno)))
+//				win.bookMarkDates[info.fileno]!="")
+			{
+				state	= "info";
+				moveCursor(, 551, 579);		//	カーソルはSave/Loadボタンへ
+				with(info)
+				{
+					if(mode=="save")
+						.comment.focus();	//	フォーカスはコメントへ
+					else
+						.load.focus();		//	フォーカスはLoadへ
+					.opacity	= 255;
+					.hitThreshold	= 0;	//	イベント非透過
+				}
+				lastSelectData	= +param[1];
+				changeFocusable(true);
+			}
+			else
+			{
+				releaseSavedata();
+				btn.state	= 1;	//	ONにしない
+				btn.update();
+			}
+			break;
+
+		case "page":	//	ページをクリック
+			page	= +param[1];	//	ページを変更
+//			releaseSavedata();
+			break;
+
+		case "return":
+			closeThis();
+			break;
+		}
+	}
+
+	function onButtonUp(btn)
+	{
+		var param = [].split(".", btn.id);
+		if(param[0]=="data")
+		{
+			//	実行ボタン(Load/Save)を押す
+//			info.onButtonDown(%[id:mode]);
+			releaseSavedata();
+		}
+	}
+
+	function onMouseDown(x, y, button, shift)
+	{
+		if(!showed)	return;	//	閉じる途中とかでは機能しない
+		//	ボタンからリダイレクトされたイベントを受け取る
+		if(button == mbRight)
+		{
+			if(state=="info" && info.datano>=0)
+			{
+				with(datas.get(dataidtop+(info.datano-page*saveDataCount)))
+				{
+					.focus();
+					.state	= 0;
+				}
+				releaseSavedata();
+				returnCursor();	//	move直前の位置へ戻る
+			}
+			else
+			{
+				closeThis();			//	閉じる
+			}
+		}
+	}
+
+	function onChildClose(item)
+	{
+		//	子アイテムが閉じられたときの処理
+		if(item == info)
+		{
+			state	= mode;
+		}
+		else if(item instanceof "SDReserveLayer")
+		{
+			invalidate item;	//	破棄する
+		}
+	}
+
+	function onSaved(result)
+	{
+		if(result)
+		{
+			sf.lastSaveData	= lastSelectData;	//	直前のセーブデータ
+			closeThis(true);
+		}
+		else
+		{
+			datas.get("data."+(info.datano-page*saveDataCount)).focus();
+			changeFocusable(true);	//	ボタンを押せるよう戻す
+		}
+	}
+
+	function onLoaded(result, num)
+	{
+		if(result)
+		{
+			//	データをロードすることになったら
+			try
+			{
+				loadNo	= num;
+				//	ユーザーフォントに変更
+				with(window.fore.messages[0])
+				{
+					.setDefaultFont(%[face:"user"]);
+					.resetFont();
+				}
+				with(window.back.messages[0])
+				{
+					.setDefaultFont(%[face:"user"]);
+					.resetFont();
+				}
+
+				//	背景に"NowLoading..."を描画
+				with(window.fore.base)
+				{
+					var lastfontheight	= .font.height	= 32;
+					var msg	= "Now Loading...";
+					var l = .width - .font.getTextWidth(msg) - 16;
+					var t = .height - .font.getTextHeight(msg) - 16;
+					.drawText(l, t, msg, 0xFFFF00, 255, true, 1024, 0x000000, 2, 0, 0);
+					.font.height	= lastfontheight;
+				}
+
+				parent.hide();	//	親に閉じてもらう
+			}
+			catch(e)
+			{
+				startLogToFile();
+				dm(e.trace+": SaveLoadMenuLayer.onLoaded: this isn't valid.");
+				return true;
+			}
+		}
+		else
+		{
+			datas.get("data."+(info.datano-page*saveDataCount)).focus();
+			changeFocusable(true);	//	ボタンを押せるよう戻す
+		}
+	}
+
+	function onErased(result)
+	{
+		if(result)
+		{
+//			datas.execAll("reload");//	一覧の更新
+			with(datas.get("data."+(info.datano-page*saveDataCount)))
+			{
+				.thumbnail	= nodataImage;
+				.update();	//	削除したもののみ更新
+				.off();		//	選択解除
+			}
+//			info.hide();			//	詳細を隠す
+			info.comment.text	= "";	//	コメントを消去
+			releaseSavedata();
+		}
+		else
+			datas.get("data."+(info.datano-page*saveDataCount)).focus();
+	}
+
+	property page
+	{
+		setter(pg)
+		{
+			if(pg!==page)
+			{
+				if(pg<0)
+					pg	= savePageCount-1;
+				else if(pg>=savePageCount)
+					pg	= 0;
+				_page	= pg;
+				//	ページボタンを変更
+				if(pages!=void)
+					pages.get(pageidtop+page).onWithoutOther();
+				//	セーブデータを変更
+				if(datas!=void)
+				{
+					datas.execAll("reload");
+//					info.hide();
+					releaseSavedata();
+				}
+			}
+		}
+		getter	{ return _page; }
+	}
+
+	property baseDataNo
+	{
+		getter	{ return page * saveDataCount; }
+	}
+}
+
+class SaveDataLayer extends ExButtonLayer
+{
+	var indexno;
+	var data;
+	var thumbnail;
+
+	var pushcolor	= 0xFFFFFF;
+	var selectcolor	= 0xFFFFFF;
+
+	var movestate;
+	var lastx, lasty;
+
+	function SaveDataLayer(win, par, no, eldest=true)
+	{
+		indexno	= no;
+		var l = saveDataPos[0] + (no % saveDataSidewaysCount) * saveDataPos[2];
+		var t = saveDataPos[1] + (no \ saveDataSidewaysCount) * saveDataPos[3];
+		thumbnail	= void;
+
+		super.ExButtonLayer(win, par, dataidtop+no, l, t, "", "", eldest);
+		name	= id;
+		setSize(par.dataBaseImage.imageWidth, par.dataBaseImage.imageHeight);
+		mode	= 1;
+		readyVisible();
+		movestate	= 0;
+	}
+
+	function finalize()
+	{
+		invalidate thumbnail;
+		super.finalize(...);
+	}
+
+	function create(no)
+	{
+		return new global.SaveDataLayer(window, parent, no, false);
+	}
+
+	function load()
+	{
+		var win = window;
+		var par = parent;
+		var no = indexno + par.page * saveDataSidewaysCount * saveDataLengthwiseCount;
+		if(thumbnail!=void && thumbnail!=par.nodataImage)
+			invalidate thumbnail;
+		var fno = sn2fn(no);
+		var fname = win.getBookMarkFileNameAtNum(fno);
+//		dm(no+": "+fname+" = "+Storages.isExistentStorage(fname));
+		if(Storages.isExistentStorage(fname))// && win.bookMarkDates[fno]!="")
+		{
+//			dm("load thumbnail: "+fname);
+			with(thumbnail = new global.Layer(win, par))
+			{
+				.loadImages(fname);
+				.opacity	= 128;
+				.setPos	= function (l, t)
+				{
+					if(l<0)	l	= 0;
+					else if(l+width>parent.width)	l	= parent.width - width;
+					if(t<0)	t	= 0;
+					else if(t+height>parent.height)	t	= parent.height - height;
+					global.Layer.setPos(l, t);
+				} incontextof thumbnail;
+			}
+			data		= true;
+		}
+		else
+		{
+			thumbnail	= par.nodataImage;
+			data		= false;
+		}
+		update();
+	}
+
+	function reload()
+	{
+		load();
+	}
+
+	function moveTo(no)
+	{
+		//	指定のセーブデータ位置へ移動する
+//		dm(indexno+" move to "+no);
+		indexno	= no;
+		id		= dataidtop+no;
+		var l = saveDataPos[0] + (no % saveDataSidewaysCount) * saveDataPos[2];
+		var t = saveDataPos[1] + (no \ saveDataSidewaysCount) * saveDataPos[3];
+		move(l, t,, 100, 0);
+	}
+
+	function draw()
+	{
+		var l = thumbnailPos[0], t = thumbnailPos[1];
+		var tmb = thumbnail;
+		switch(state)
+		{
+		case 0:
+			copyRect(l, t, tmb, 0, 0, tmb.imageWidth, tmb.imageHeight);
+			pileRect(0, 0, parent.dataBaseImage, 0, 0, width, height);
+			break;
+
+		case 1:
+			copyRect(l, t, tmb, 0, 0, tmb.imageWidth, tmb.imageHeight);
+			pileRect(0, 0, parent.dataCursorImage, 0, 0, width, height);
+			break;
+
+		case 2:
+			colorRect(0, 0, width, height, pushcolor, 128);
+			break;
+
+		case 3:
+			copyRect(l, t, tmb, 0, 0, tmb.imageWidth, tmb.imageHeight);
+			pileRect(0, 0, parent.dataBaseImage, 0, 0, width, height);
+			colorRect(0, 0, width, height, selectcolor, 64);
+			break;
+
+		case 4:
+			copyRect(l, t, tmb, 0, 0, tmb.imageWidth, tmb.imageHeight);
+			pileRect(0, 0, parent.dataCursorImage, 0, 0, width, height);
+			colorRect(0, 0, width, height, selectcolor, 64);
+			break;
+		}
+	}
+
+	function onMouseEnter()
+	{
+		with(parent)
+		{
+			if(!.showed)	return;	//	閉じる途中とかでは機能しない
+			.onButtonEnter(this);
+			if(.state!="info")
+				super.onMouseEnter(...);
+		}
+	}
+
+	function onFocus()
+	{
+		with(parent)
+		{
+			if(!.showed)	return;	//	閉じる途中とかでは機能しない
+			.onButtonEnter(this);
+			if(.state!="info")
+				super.onMouseEnter(...);
+		}
+	}
+
+	function onMouseDown(x, y, button, shift)
+	{
+		if(!parent.showed)	return;	//	閉じる途中とかでは機能しない
+		if(button!=mbRight)
+		{
+			lastx	= x;
+			lasty	= y;
+			movestate	= 1;
+		}
+		return super.onMouseDown(...);
+	}
+
+	function onMouseMove(x, y)
+	{
+		if(movestate & 1)
+		{
+			if(movestate & 2)
+			{
+				//	サムネールを移動
+				thumbnail.setPos(left+x-lastx, top+y-lasty);
+			}
+			else if((lastx>x ? lastx-x : x-lastx) + (lasty>y ? lasty-y : y-lasty)>unmovedLimit)
+			{
+//				dm("swap mode: "+indexno);
+				//	制限以上にカーソルが移動したら、データを移動させようとしていると
+				//	判断して、サムネール用の画像をカーソルとして表示する
+				var t = thumbnail;
+				t.setPos(left+thumbnailPos[0], top+thumbnailPos[1]);
+				t.setSizeToImageSize();
+				t.visible	= true;
+				movestate	|= 2;
+			}
+		}
+	}
+
+	function onMouseUp(x, y, button, shift)
+	{
+		if(!parent.showed)	return;	//	閉じる途中とかでは機能しない
+		if(movestate & 2)
+		{
+//			dm("mouse up "+indexno);
+			//	セーブデータ移動処理
+			x += left - saveDataPos[0];
+			y += top - saveDataPos[1];
+			var lno = x \ saveDataPos[2];
+			var uno = y \ saveDataPos[3];
+//			dm(x+","+y+","+lno+","+uno);
+			var par = parent;
+			var bn = par.baseDataNo;
+			if(x>0 && y>0 && lno<saveDataSidewaysCount && uno<saveDataLengthwiseCount)
+			{
+				var swapno = uno * saveDataSidewaysCount + lno;	//	移動先
+				if(indexno != swapno)
+					par.swapSaveData(bn+indexno, bn+swapno);	//	入れ替えを具申
+			}
+			else if(!par.isAlreadyReserved(bn + indexno))
+			{
+				//	保留する(他のページへ移動するため)
+				par.reserveSaveData(bn + indexno, thumbnail);
+			}
+
+			thumbnail.setSize(1,1);
+			thumbnail.visible	= false;	//	非表示に
+		}
+		else
+			super.onMouseUp(...);
+		movestate	= 0;
+	}
+
+	function onKeyDown(key, shift)
+	{
+		if(!parent.showed)	return;	//	閉じる途中とかでは機能しない
+
+		var par = parent;
+		var no = indexno, next;
+		switch(key)
+		{
+		case VK_LEFT:
+			if(no<1)
+			{
+				par.retbutton.focus();	//	Backボタン
+				return;
+			}
+			break;
+		case VK_RIGHT:
+			if(no>=saveDataCount-1)
+			{
+				par.retbutton.focus();	//	Backボタン
+				return;
+			}
+			break;
+
+		case VK_UP:
+			if(no<saveDataSidewaysCount)
+			{
+/*				if(par.info.showed)
+					par.info.cancel.focus();		//	cancelボタン
+				else
+					par.pages.get(pageidtop+par.page).focus();	//	現在のページボタン
+*/				par.retbutton.focus();	//	Backボタン
+			}
+			else
+			{
+				par.datas.get(dataidtop+(no-saveDataSidewaysCount)).focus();	//	一つ上
+			}
+			return;
+		case VK_DOWN:
+			if(no>=saveDataCount-saveDataSidewaysCount)
+				par.pages.get(pageidtop+par.page).focus();	//	現在のページボタン
+			else
+				par.datas.get(dataidtop+(no+saveDataSidewaysCount)).focus();	//	一つ下
+			return;
+		case VK_PRIOR:
+			par.page--;
+			return;
+
+		case VK_NEXT:
+			par.page++;
+			return;
+		}
+		super.onKeyDown(key, shift, true);
+	}
+
+	function onJoyStick(trig)
+	{
+		if(!parent.showed)	return;	//	閉じる途中とかでは機能しない
+
+		if(trig & jsLeft)			onKeyDown(VK_LEFT);
+		else if(trig & jsRight)		onKeyDown(VK_RIGHT);
+		else if(trig & jsUp)		onKeyDown(VK_UP);
+		else if(trig & jsDown)		onKeyDown(VK_DOWN);
+		else if(trig & jsTrigger1)	onKeyDown(VK_RETURN);
+		else if(trig & jsTrigger2)	onKeyDown(VK_ESCAPE);
+		else
+			super.onJoyStick(trig, true);
+	}
+
+	function onPaint()
+	{
+		super.onPaint(...);
+		draw();
+	}
+}
+
+class SDReserveLayer extends FadeLayer
+{
+	var moved;
+	var lastx, lasty;
+
+	var savedatano;
+
+	function SDReserveLayer(win, par, no, img)
+	{
+		super.FadeLayer(win, par);
+
+		//	指定の画像を複製する
+		setPos(img.left, img.top);
+		setSize(img.width, img.height);
+		copyRect(0, 0, img, 0, 0, img.width, img.height);
+		opacity	= 192;
+		visible	= true;
+
+		savedatano	= no;
+		moved		= false;
+	}
+
+	function finalize()
+	{
+		super.finalize(...);
+	}
+
+	function hide(time, accel, func=void)
+	{
+		fade(0, time, accel, func);
+	}
+
+	function onMouseDown(x, y, button, shift)
+	{
+		if(!parent.showed)	return;	//	閉じる途中とかでは機能しない
+		if(button==mbLeft)
+		{
+			//	選択された
+			lastx	= x;
+			lasty	= y;
+			moved	= true;
+		}
+		else if(button==mbRight)
+			parent.removeReserve(this);
+	}
+
+	function onMouseMove(x, y)
+	{
+		if(moved)
+		{
+			//	移動中
+			left	+= x - lastx;
+			top		+= y - lasty;
+		}
+	}
+
+	function onMouseUp(x, y, button, shift)
+	{
+		if(!parent.showed)	return;	//	閉じる途中とかでは機能しない
+		if(moved)
+		{
+			//	保留データ移動処理
+			x += left - saveDataPos[0];
+			y += top - saveDataPos[1];
+			var lno = x \ saveDataPos[2];
+			var uno = y \ saveDataPos[3];
+//			dm(x+","+y+","+lno+","+uno);
+			if(x>0 && y>0 && lno<saveDataSidewaysCount && uno<saveDataLengthwiseCount)
+			{
+				var swapno = uno * saveDataSidewaysCount + lno + parent.baseDataNo;	//	移動先
+				if(savedatano != swapno)
+					parent.swapSaveData(savedatano, swapno);	//	入れ替えを具申
+
+				//	入れ替えが起こったので保留レイヤーは破棄
+				parent.removeReserve(this);
+			}
+			moved	= false;
+		}
+	}
+
+	property left
+	{
+		setter(l)
+		{
+			if(l!==left)
+			{
+				if(l<0)	l	= 0;
+				else if(l+width>parent.width)	l	= parent.width - width;
+				super.left	= l;
+			}
+		}
+		getter	{ return super.left; }
+	}
+
+	property top
+	{
+		setter(t)
+		{
+			if(t!==top)
+			{
+				if(t<0)	t	= 0;
+				else if(t+height>parent.height)	t	= parent.height - height;
+				super.top	= t;
+			}
+		}
+		getter	{ return super.top; }
+	}
+}
+
+class SaveDataInfoLayer extends FadeLayer
+{
+	var itemnames = [ "title", "date", "comment", "readonly", "load", "save", "del", "cancel" ];
+
+	var _datano;
+	var save;
+	var load;
+	var	del;
+
+	var	lasttime;
+	var	lastaccel;
+
+	var infoPos = [ [ 826, 484 ], [ 126, 484 ] ];
+	var itemdata = %[
+		"readonly" =>	[ 0|0, 123, 87, "_チェックボックス", "セーブデータの保護属性を設定します。\n消したくないデータの場合はチェックを入れておいてください。" ],
+		"title" =>		[ 2|0, 125, 8, 525, 20, "シーンのタイトルを表示しています。" ],
+		"date" =>		[ 2|0, 125, 33, 525, 20, "このデータが保存された日時を表示しています。" ],
+		"comment" =>	[ 2|1, 125, 58, 525, 20, "このデータに設定されているコメントです。" ],
+//		"load" =>		[ 4|0|1, 473, 83, "_load", "このデータを再生します。" ],
+//		"save" =>		[ 4|0|1, 473, 83, "_save", "現在の状態をこのデータ位置に保存します。" ],
+//		"del" =>		[ 0|1, 566, 83, "_delete", "このデータを削除します。\n一度削除すると永久に失われて\nしまうので注意してください。" ]
+		"load" =>		[ 4|0|1, 380, 83, "_load", "このデータを再生します。" ],
+		"save" =>		[ 4|0|1, 380, 83, "_save", "現在の状態をこのデータ位置に保存します。" ],
+		"del" =>		[ 0|1, 473, 83, "_delete", "このデータを削除します。\n一度削除すると永久に失われて\nしまうので注意してください。" ],
+		"cancel" =>		[ 0|1, 566, 83, "_cancel", "このウィンドウを閉じます。" ]
+	];
+
+	var textcolor = 0xFFFFFF;
+	var shadowcolor = 0x000000;
+	var	txbgcolor = %[ "save" => 0x3F4561, "load" => 0x673945 ];
+
+	var showed	= false;
+
+	var _focusable;
+
+	function SaveDataInfoLayer(win, par)
+	{
+		super.FadeLayer(...);
+
+		var mode = par.mode;
+
+		loadImages(mode+"_コメント枠");
+		setSizeToImageSize();
+		setPos(infoPos[1][0], infoPos[1][1]);
+		name	= "セーブデータ情報";
+
+		var ii = itemdata;
+		var mode = par.mode;
+		for(var i=0; i<itemnames.count; i++)
+		{
+			var it;
+			var nm = itemnames[i];
+			var idt = ii[nm];
+			if(idt[0]&4 && nm!=mode)
+			{
+//				dm("mode = button: "+mode+" = "+nm);
+				continue;	//	saveモード時は"load"ボタンを、loadモード時は"save"ボタンを表示しない
+			}
+/*			if(mode == "load")	//	ロードメニューの時、
+			{
+				if(nm == "del")	continue;	//	削除ボタンは表示しない
+			}
+*/			var ro = true;
+			switch(idt[0])
+			{
+			case 0:
+			case 4:
+				it = this[nm]	= new ExButtonLayer(win, this, nm, idt[1], idt[2], mode+idt[3], idt[4]);
+				break;
+
+			case 1:
+			case 5:
+				it = this[nm]	= new ExButtonLayer(win, this, nm, idt[1], idt[2], mode+idt[3], idt[4]);
+//				it.mode	= 0;	//	押されるだけ
+				it.changePushButton();
+				break;
+
+			case 3:
+				ro = false;
+			case 2:
+				with(it = this[nm] = new InputLayer(win, this, ro))
+				{
+					.setPos(idt[1], idt[2]);
+					.setSize(idt[3], idt[4]);
+					.font.height	= idt[4];
+					.Edit_textColor	= textcolor;
+					.Edit_color		= txbgcolor[mode];
+					.Edit_opacity	= 255;
+					.shadowcolor	= shadowcolor;
+					.hint		= idt[5];
+//					.focusable	= idt[6];
+					if(!ro)
+					{//	コメント
+						.onKeyDown = function(key, shift)
+						{
+							if(key==VK_UP)
+							{
+								// 選択中のページボタンへ
+								var par = parent.parent;
+								par.pages.get(pageidtop+par.page).focus();
+							}
+							else
+								global.InputLayer.onKeyDown(key, shift, true);
+						} incontextof it;
+					}
+				}
+				break;
+			}
+//			dm("it = "+it);
+			it.readyVisible();	//	最初から表示されている状態
+		}
+		visible	= true;
+		opacity	= 128;//255;
+		hitType			= htMask;
+		hitThreshold	= 256;	//	イベント透過
+//		focusable	= true;
+		showed	= true;
+		datano	= -1;
+	}
+
+	function finalize()
+	{
+//		window.mouseArea	= void;
+//		window.saveSystemVariables();	//	データを保存する(ここでやると無効)
+
+		release(del);
+		release(cancel);
+		release(save);
+		release(load);
+		release(comment);
+		release(date);
+		release(title);
+		release(readonly);
+
+		super.finalize(...);
+	}
+
+	function saveComment()
+	{
+		var no = fileno;
+		if(no<0)	return;	//	範囲外なので処理しない
+
+		with(window)
+		{
+			if(.scflags.bookMarkComments === void)
+				.scflags.bookMarkComments = [];
+			.scflags.bookMarkComments[no]	= comment.text;
+		}
+	}
+
+	function onMouseDown()
+	{
+//		dm("parent.showed = "+parent.showed);
+		if(!parent.showed)	return;	//	閉じる途中とかでは機能しない
+		parent.onMouseDown(...);
+	}
+
+	function onButtonDown(btn)
+	{
+		if(!parent.showed)	return;	//	閉じる途中とかでは機能しない
+		var no = fileno;
+		if(no<0)			return;	//	範囲外なので処理しない
+
+		switch(btn.id)
+		{
+		case "save":
+			var win = window;
+			with(window)
+			{
+				if(.scflags.bookMarkComments === void)
+					.scflags.bookMarkComments = [];
+				.scflags.bookMarkComments[no] = comment.text;
+				parent.changeFocusable(false, false);	//	ボタンを押せないようにする。
+				if(!.saveBookMarkWithAsk(no, parent.onSaved))
+				{
+					popupMessage("上書き禁止がONになっているため、書き込めません。");
+					parent.changeFocusable(true);
+				}
+			}
+			break;
+
+		case "load":
+			with(window)
+			{
+				if(Storages.isExistentStorage(.getBookMarkFileNameAtNum(no))
+)//					&& .bookMarkDates[no]!="")
+				{
+					var prompt	= "「"+ .bookMarkNames[no] + "」\n";
+					prompt		+= "[記録日時:"+.bookMarkDates[no]+"]\n" if .bookMarkDates[no]!="";
+					prompt		+= .loadActionName+.loadActionNameLast.substring(1,1)+"ますか?";
+					parent.changeFocusable(false, false);	//	ボタンを押せないようにする。
+					.askYesNo2(prompt, parent.onLoaded, no);
+						//	ロードするならparent.onLoadedを実行
+				}
+			}
+			break;
+
+		case "cancel":
+//			hide();	//	閉じる
+			parent.onMouseDown(,, mbRight);
+			break;
+
+		case "del":
+			with(window)
+				if(Storages.isExistentStorage(.getBookMarkFileNameAtNum(no))
+)//					&& .bookMarkDates[no]!="")
+					.eraseBookMarkWithAsk(no, parent.onErased);
+			break;
+
+		case "readonly":	//	上書き禁止
+			window.bookMarkProtectedStates[no]	= true;
+			break;
+		}
+	}
+
+	function onButtonUp(btn)
+	{
+		if(!parent.showed)	return;	//	閉じる途中とかでは機能しない
+		var no = fileno;
+		if(no<0)			return;	//	範囲外なので処理しない
+
+		if(btn.id=="readonly")
+			window.bookMarkProtectedStates[no]	= false;
+	}
+
+	function onFinishInput(input)
+	{
+		if(input == comment)
+			this[parent.mode].focus();
+	}
+
+	property focusable
+	{
+		setter(f)
+		{
+			if(f !== _focusable)
+			{
+				_focusable	= f;
+
+				//	アイテムのフォーカス可否を変える
+				var names	= itemnames;
+				var datas	= itemdata;
+				for(var i=0; i<names.count; i++)
+				{
+					var name = names[i];
+
+					//	確保済みかつReadOnlyでないアイテムのみフォーカス可否を変更
+					if(typeof this[name] != "undefined" && this[name]!=void && datas[name][0] != 2)
+					{
+						this[name].focusable	= f;
+						dm("info."+name+".focusable = "+f);
+					}
+				}
+			}
+		}
+		getter { return _focusable; }
+	}
+
+	property datano
+	{
+		setter(n)
+		{
+//			if(_datano !== n)
+			{
+				saveComment() if parent.state=="info";	//	変更前に保存。ただし、選ばれている時のみ
+				_datano = n;
+				n = fileno;
+
+				if(n>=0)
+				{
+					//	指定番号のセーブデータを読み込み、各アイテムに値を設定する
+					with(window)
+					{
+						title.text = .bookMarkNames[n]=="" ? "N O  D A T A" : .bookMarkNames[n];
+						date.text = .bookMarkDates[n]=="" ? "----/--/-- --:--" : .bookMarkDates[n];
+						comment.text = .scflags.bookMarkComments!==void ? .scflags.bookMarkComments[n] : "";
+						.bookMarkProtectedStates[n] ? readonly.on() : readonly.off();
+					}
+					enabled	= true;	//	有効なデータを表示してい
+				}
+				else
+				{
+					//	範囲外
+					title.text = "------------";
+					date.text = "----/--/-- --:--";
+					comment.text = "";
+					readonly.off();
+					enabled	= false;	//	データは利用できない
+				}
+			}
+		}
+		getter { return _datano; }
+	}
+
+	property fileno
+	{
+		getter { return sn2fn(_datano); }
+	}
+
+	//	イベント透過の閾値 → 全てのレイヤーに設定する
+	property hitThreshold
+	{
+		setter(t)
+		{
+			var ns = itemnames;
+			for(var i=ns.count-1; i>=0; i--)
+				this[ns[i]].hitThreshold = t if this[ns[i]]!==void;
+			super.hitThreshold	= t;
+		}
+		getter	{ return super.hitThreshold; }
+	}
+}
+
+class InputLayer extends EditLayer
+{
+	var	spacing;
+	var	readonly;
+
+	function InputLayer(win, par, readonly=false, vert=false)
+	{
+		super.EditLayer(win, par, vert);
+		this.readonly	= readonly;
+		if(readonly)
+			super.focusable	= false;
+		spacing	= 0;
+	}
+
+	function finalize()
+	{
+		super.finalize(...);
+	}
+
+	function showCaret()
+	{
+		if(!readonly)
+			super.showCaret();
+	}
+
+	function readyVisible()
+	{
+		visible		= true;
+	}
+
+	function onMouseDown(x, y, button)
+	{
+		if(!parent.showed)	return;	//	閉じる途中とかでは機能しない
+		if(button == mbRight)
+			parent.onMouseDown(...);
+		else
+			super.onMouseDown(...);
+	}
+
+	function onMouseEnter()
+	{
+		focus();
+	}
+
+	function onKeyDown(key, shift)
+	{
+		if(!parent.showed)	return;	//	閉じる途中とかでは機能しない
+		var process = true;
+		if(key == VK_ESCAPE)
+		{
+			parent.onMouseDown(0, 0, mbRight);
+			process	= false;
+		}
+		else if(key == VK_RETURN)
+		{
+			parent.onFinishInput(this);	//	入力が終わったことを知らせる
+		}
+
+		super.onKeyDown(key, shift, process);
+	}
+
+	function onJoyStick(trig)
+	{
+		if(!parent.showed)	return;
+		var process	= true;
+
+		if(trig & jsTrigger1)
+		{
+			onKeyDown(VK_RETURN);
+			process	= false;
+		}
+		if(trig & jsTrigger2)
+		{
+			onKeyDown(VK_ESCAPE);
+			process	= false;
+		}
+		super.onJoyStick(trig, process);
+	}
+
+	function onPaint()
+	{
+		// 描画の直前に呼ばれる
+		// 内容を描画する
+		// とりあえずクリア
+		var vert = Edit_vertical;
+		var imwidth = vert?imageHeight:imageWidth;
+//		fillRect(0, 0, imageWidth, imageHeight, Edit_color+Edit_opacity*0x1000000);
+		fillRect(0, 0, imageWidth, imageHeight, 0);
+		colorRect(0, 0, imageWidth, imageHeight, Edit_color, Edit_opacity);
+
+		// 文字を描画
+		// グローバル変数や、オブジェクト内変数はアクセスが遅いので、
+		// よく使う変数はローカルに持ってくる
+		var h = font.height;
+		h = -h if(h<0);
+		var spc = spacing;
+		var x = vert ? imageWidth - spc : spc;
+		var y = spc;
+		var chpos = Edit_scrollPos;
+		var t = Edit_text;
+		var textlen = t.length;
+//		t += " ";
+//		t = t.substr(0, textlen-1);
+		var selstart = Edit_selStart;
+		var selend = Edit_selLength + selstart;
+		var highlightbg = 0xff000000 | clHighlight;
+		var highlighttext = clHighlightText;
+		var anti = Edit_antialiased;
+		var textcolor = Edit_textColor;
+		var tx = "";
+		if(vert)
+		{
+			for(;;)
+			{
+				y = spc + font.getTextWidth(tx);
+				if(y > imwidth) break;
+				if(chpos >= textlen) break;
+				var ch = t[chpos++];
+				var chw = font.getTextWidth(ch);
+				if(chpos >= selstart && chpos < selend)
+				{
+					// 選択領域内
+					// 背景を塗る
+					fillRect(x, y, h, chw, highlightbg);
+					// 文字を書く
+					drawText(x, y, ch, highlighttext, 255, anti, 1024, shadowcolor, 2);
+				}
+				else
+				{
+					// 選択領域外
+					drawText(x, y, ch, textcolor, 255, anti, 1024, shadowcolor, 2);
+				}
+				tx += ch;
+			}
+		}
+		else
+		{
+			for(;;)
+			{
+				x = spc + font.getTextWidth(tx);
+				if(x > imwidth) break;
+				if(chpos >= textlen) break;
+				var ch = t[chpos++];
+				var chw = font.getTextWidth(ch);
+				if(chpos >= selstart && chpos < selend)
+				{
+					// 背景を塗る
+					fillRect(x, y, chw, h, highlightbg);
+					// 文字を書く
+					drawText(x, y, ch, highlighttext, 255, anti, 1024, shadowcolor, 2);
+				}
+				else
+				{
+					// 選択領域外
+					drawText(x, y, ch, textcolor, 255, anti, 1024, shadowcolor, 2);
+				}
+				tx += ch;
+			}
+		}
+		// 文字領域外をもう一度クリア
+		if(vert)
+		{
+			fillRect(0, imageHeight - spc, imageWidth, spc, 0);
+			colorRect(0, imageHeight - spc, imageWidth, spc, Edit_color, Edit_opacity);
+		}
+		else
+		{
+			fillRect(imageWidth - spc, 0, spc, imageHeight, 0);
+			colorRect(imageWidth - spc, 0, spc, imageHeight, Edit_color, Edit_opacity);
+		}
+//		dm("draw text: "+tx);
+	}
+
+	function setCaretLayerPos()
+	{
+		var base = 1;
+		var correction = -2;
+		resizeCaret();
+		var xpos = getCaretXPos() -1;
+		if(Edit_vertical)
+		{
+			Edit_caretLayer.top = xpos + correction;
+			Edit_caretLayer.left = imageWidth - base - Edit_caretLayer.imageWidth;
+			setAttentionPos(imageWidth - base , Edit_caretLayer.top);
+		}
+		else
+		{
+			Edit_caretLayer.top = base;
+			Edit_caretLayer.left = xpos + correction;
+			setAttentionPos(xpos + correction, base);
+		}
+	}
+
+	property focusable
+	{
+		setter(f)
+		{
+			if(!readonly)
+				super.focusable	= f;
+		}
+		getter	{ return super.focusable; }
+	}
+}
+
+function sn2fn(no)
+{
+	//	セーブデータ番号をファイルデータ番号に変換する
+	//		セーブデータにアクセスするときは、必ずこのメソッド経由で行うこと!!
+	var m = sf.convertSaveNoToFileNo;
+	if(m.count<1)
+	{
+		//	変換行列が空なので埋めておく
+		for(var i=saveDataCount*savePageCount-1; i>=0; i--)
+			m[i]	= i;
+	}
+	if(no!==void && no>=0 && no<saveDataCount*savePageCount)
+		return m[no];
+	else
+		return -1;
+}
+
+function swapSnFn(a, b)
+{
+	//	ファイルデータ番号を入れ替える
+	var m = sf.convertSaveNoToFileNo;
+	var tmp = m[b];
+	m[b] = m[a];
+	m[a] = tmp;
+//	dm(a+"["+m[a]+"] <-> "+b+"["+m[b]+"]");
+}
+
+/*-----------------------------------------------------------------------------
+/	End of File
+/----------------------------------------------------------------------------*/
+@endif

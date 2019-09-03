@@ -1,0 +1,147 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) TYPE-MOON All Rights Reserved.
+/		ページのようにぱらぱら切り替えることができるレイヤー
+/----------------------------------------------------------------------------*/
+@if(__PAGINGLAYER_DEFINED__==0)
+@set(__PAGINGLAYER_DEFINED__=1)
+
+Scripts.execStorage("AutonomyLayer.tjs");
+Scripts.execStorage("ExButtonLayer.tjs");
+
+var PLPageStorage	= [ "pageprev", "pagenext" ];
+
+class PagingLayer extends AutonomyLayer
+{
+	var pages;
+	var nextlayer;
+	var verso;
+
+	var lastper;
+
+	var curpage;
+	var margin	= 16;
+	var buttons;
+	var pagebuttondata = [
+		[ 3, "prev", "pageprev", "前のページへ", 0, 0 ],	//	前へは左下、
+		[ 3, "next", "pagenext", "次のページへ", 0, 0 ]		//	次へは右下に表示
+	];
+
+	function PagingLayer(win, per)
+	{
+		super.AutonomyLayer(...);
+		name		= "PagingLayer";
+	}
+
+	function finalize()
+	{
+		release(nextlayer);
+		release(buttons);
+		super.finalize(...);
+	}
+
+	function loadAndShow(pages, time=lasttime, accel=lastaccel)
+	{
+		this.pages	= pages;
+		curpage	= 0;
+
+		dm("pages[curpage] = "+pages[curpage]);
+		super.loadAndShow(pages[curpage],, time, accel);
+		verso	= false;
+	}
+
+	function changePage(pageno, time=lasttime, accel=lastaccel)
+	{
+		while(pageno<0)				pageno	+= pages.count;
+		while(pageno>=pages.count)	pageno	-= pages.count;
+		curpage	= pageno;
+
+		this.storage= pages[pageno];
+		lasttime	= this.time		= time;
+		lastaccel	= this.accel	= accel;
+
+		System.addContinuousHandler(handler);
+		state	= 10;
+		doing	= true;
+	}
+
+	function construct(per)
+	{
+		super.construct(...);
+		switch(state)
+		{
+		case 0:
+			if(buttons==void)
+			{
+				//	読み込んだ時にボタンを作成
+				buttons	= createButtons(window, this, pagebuttondata);
+				buttons[0].setPos(margin, height - (buttons[0].imageHeight + margin));
+				buttons[1].setPos(width - (buttons[1].imageWidth - margin), height - (buttons[1].imageHeight + margin));
+			}
+			break;
+
+		case 10:	//	次ページの読み込み
+			if(verso)
+				loadImages(storage);
+			else
+			{
+				if(nextlayer==void)
+				{
+					nextlayer	= new global.Layer(window, this);
+					nextlayer.hitType		= htMask;
+					nextlayer.hitThreshold	= 256;
+				}
+				nextlayer.loadImages(storage);
+				nextlayer.setSizeToImageSize();
+				nextlayer.opacity	= 0;
+				nextlayer.visible	= true;
+			}
+			starttick	= System.getTickCount();
+			state		= 11;
+			lastper		= 0.0;
+			break;
+
+		case 11:	//	次ページに切り替える
+/*			//	この処理は必ず1方向に進み、戻らないことが約束されている時のみ有効
+			pileRect(0, 0, nextlayer, 0, 0, nextlayer.imageWidth, nextlayer.imageHeight, int(255 * ((per - lastper) / (1.0 - lastper))));
+			//	[目的の不透明度] = [直前の不透明度] * (1.0 - x) + x
+			//		↓ 解く
+			//	x = ([目的の不透明度] - [直前の不透明度]) / (1.0 - [直前の不透明度])
+			lastper	= per;	*/
+			if(verso)
+				nextlayer.opacity	= 255 - int(255 * per);
+			else
+				nextlayer.opacity	= int(255 * per);
+			break;
+		}
+	}
+
+	function finish()
+	{
+		super.finish();
+		verso	= !verso;
+	}
+
+	function stop()
+	{
+		if(doing && state==3 && !verso)
+		{
+			//	本体→サポートレイヤーのときのみ、サポートレイヤーの画像を本体へコピー
+			copyRect(0, 0, nextlayer, 0, 0, nextlayer.width, nextlayer.height);
+			nextlayer.visible	= false;
+		}
+		super.stop();
+	}
+
+	function onButtonDown(btn)
+	{
+		if(btn.id=="prev")
+			changePage(curpage-1);
+		else if(btn.id=="next")
+			changePage(curpage+1);
+	}
+}
+
+/*----------------------------------------------------------------------------/
+/	
+/----------------------------------------------------------------------------*/
+@endif

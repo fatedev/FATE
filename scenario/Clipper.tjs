@@ -1,0 +1,220 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) TYPE-MOON All Rights Reserved.
+/		描画領域のロスを最小にするクラス
+/		※	描画対象が矩形かつ不透明なもののときのみ有効
+/----------------------------------------------------------------------------*/
+@if(__CLIPPER_DEFINED__==0)
+@set(__CLIPPER_DEFINED__=1)
+
+Scripts.execStorage("subroutine.tjs");
+
+class Clipper
+{
+	var rects;
+	var xaxis, yaxis;
+	var drawrects;
+	var sorted;
+	var cliped;
+	var cliprect;
+
+	function Clipper()
+	{
+		init();
+	}
+
+	function finalize()
+	{
+		invalidate drawrects if drawrects!=void;
+		invalidate yaxis if yaxis!=void;
+		invalidate xaxis if xaxis!=void;
+		invalidate rects if rects!=void;
+	}
+
+	//	リストを初期化
+	function init()
+	{
+		rects	= [];
+		xaxis	= [];
+		yaxis	= [];
+		cliped	= false;
+	}
+
+	//	描画対象の登録
+	function add(ll, t, w, h, a, src)
+	{
+//		eraseClipPoint();
+
+		if(typeof ll == "Object")
+		{
+			t	= ll["top"];
+			w	= ll["width"];
+			h	= ll["height"];
+			a	= ll["absolute"];
+			src	= ll;
+			ll	= ll["left"];
+		}
+
+		rects[rects.count]	= [ll, t, ll+w, t+h, a, src];
+		xaxis[xaxis.count]	= ll;
+		xaxis[xaxis.count]	= ll+w;
+		yaxis[yaxis.count]	= t;
+		yaxis[yaxis.count]	= t+h;
+		sorted	= false;
+	}
+
+	//	クリップ点を削除
+	function eraseClipPoint()
+	{
+		if(cliped)
+		{
+			var axis = xaxis;
+			axis.erase(axis.count-1);
+			axis.erase(0);
+			axis = yaxis;
+			axis.erase(axis.count-1);
+			axis.erase(0);
+			cliped	= false;
+		}
+	}
+
+	//	クリップ領域を指定
+	function setClipRect(cliprect=void)
+	{
+		eraseClipPoint();	//	直前のクリップを削除
+
+		//	クリップする分を削除
+		if(cliprect!=void)
+		{
+			var a = xaxis;
+			a.insert(0, cliprect.left);
+			a[a.count]	= cliprect.left + cliprect.width;
+			a = yaxis;
+			a.insert(0, cliprect.top);
+			a[a.count]	= cliprect.top + cliprect.height;
+
+			this.cliprect	= cliprect;
+			cliped	= true;
+		}
+		else
+		{
+			this.cliprect	= void;
+			cliped	= false;
+		}
+
+		sort();
+	}
+
+	//	リストをソートする
+	function sort()
+	{
+		if(!sorted)
+		{
+			shellsort(rects, function(a,b) { return a[4]>b[4]; });	//	Z軸を比較・降順
+			shellsort(xaxis);
+//			dm("x axis");
+			eraseMultiplePoint(xaxis);
+			shellsort(yaxis);
+//			dm("y axis");
+			eraseMultiplePoint(yaxis);
+			invalidate drawrects if drawrects!=void;
+			drawrects	= [];
+			sorted	= true;	//	ソート完了
+		}
+	}
+
+	//	重複するポイントを削除
+	function eraseMultiplePoint(a)
+	{
+		for(var i=0; i<a.count-1; i++)
+		{
+			if(a[i]==a[i+1])
+				a.erase(i+1);
+//			dm(i+" = "+a[i]);
+		}
+	}
+
+	//	描画
+	function draw(target, bgcolor, extenddraw=void)
+	{
+		var xa = xaxis, ya = yaxis, rcs=rects;
+//		var bgc = [ 0x80FF0000, 0x8000FF00, 0x800000FF, 0x80FFFFFF ];
+//		var bgcnt = 0;
+		sort();	//	リストをソートする
+
+		//	端っこを追加
+		if(!cliped)
+		{
+			if(cliprect!=void)
+				setClipRect(cliprect);
+			else
+			{
+				//	クリッピング領域が指定されていなければ、ターゲット全域を処理する
+				xa.insert(0, 0);
+				xa[xa.count]	= target.width;
+				ya.insert(0, 0);
+				ya[xa.count]	= target.height;
+				cliprect	= %[left:0,top:0,width:target.width,height:target.height];
+				cliped	= true;
+			}
+		}
+
+//		dm("clip draw start");
+		var cnt = 0;
+		for(var i=1; i<ya.count; i++)
+		{
+			for(var j=1; j<xa.count; j++)
+			{
+				var drawed = false;
+				var l=xa[j-1], t=ya[i-1], r=xa[j], b=ya[i];
+				for(var k=0; k<rcs.count; k++)
+				{
+					//	矩形rcs[k]に矩形(l, t, r, b)が含まれるか
+					var rc = rcs[k];
+//					dm(@"clip     [${i},${j},${k}](${l},${t})-(${r},${b}) <= ${rc[5].name}(${rc[0]},${rc[1]})-(${rc[2]},${rc[3]})");
+					if(((rc[0]-l-1) & (rc[1]-t-1) & (r-rc[2]-1) & (b-rc[3]-1)) < 0)
+					{
+						//	描画
+						target.copyRect(l, t, rc[5], l-rc[0], t-rc[1], r-l, b-t);
+//						target.colorRect(l, t, r-l, b-t, 0x000000, 192-rc[4]/10000*96);
+						extenddraw(target, l, t, rc[5], l-rc[0], t-rc[1], r-l, b-t) if extenddraw!=void;
+						drawed	= true;
+						drawrects[cnt]	= rc[5];
+						break;	//	ltCoverRect以外のレイヤーをスルーするようにすれば、いつでも使えるかな？(そういう場合、そもそも効果が薄そうだけど…)
+					}
+				}
+				if(!drawed)
+				{
+//					dm(@"clip fill[${i},${j},-1](${l},${t},${r},${b}) <= ${bgcolor}");
+					target.fillRect(l, t, r-l, b-t, bgcolor);	//	背景色で塗りつぶし
+/*					target.fillRect(l, t, r-l, b-t, bgc[bgcnt]);	//	背景色で塗りつぶし
+					bgcnt++;
+					bgcnt &= 3;
+*/
+					drawrects[cnt]	= void;
+				}
+				cnt++;
+			}
+		}
+	}
+
+	//	任意の座標に存在するレイヤーを返す
+	function getLayer(x, y)
+	{
+		if(drawrects===void)
+			return void;
+
+		var xa = xaxis;
+		if(x<xa[0])				return void;
+		if(x>xa[xa.count-1])	return void;
+		var ya = yaxis;
+		if(y<ya[0])				return void;
+		if(y>ya[ya.count-1])	return void;
+
+		return drawrects[binarysearch_min(x, xa)+binarysearch_min(y, ya)*(xa.count-1)];
+	}
+}
+
+/*-----------------------------------------------------------------------------
+/	End of File
+/----------------------------------------------------------------------------*/
+@endif

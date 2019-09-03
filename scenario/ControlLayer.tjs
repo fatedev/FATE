@@ -1,0 +1,100 @@
+@if(__CONTROLLAYER_DEFINED__==0)
+@set(__CONTROLLAYER_DEFINED__=1)
+/*----------------------------------------------------------------------------/
+/	コントロールレイヤー
+/		Win32の各種コントロールに似せた入出力パーツの基底クラス
+/----------------------------------------------------------------------------*/
+class ControlLayer extends Layer
+{
+	var LAYERTYPE	= "ControlLayer";	//	オーバーライドする
+	var textcolor	= 0x000000;		//	文字色
+	var bgcolor		= 0xFFA0A0A0;	//	背景色
+
+	var marginL	= 1;	//	上下左右のマージン
+	var marginT	= 1;
+	var marginR	= 1;
+	var marginB	= 1;
+
+	var target;			//	内容が変更されたときのメッセージ送り先
+
+	function ControlLayer(win, par)
+	{
+		super.Layer(win, par);
+		visible			= true;		//	基本的に最初から表示される
+		hitThreshold	= 0;		//	透明でもメッセージを受け取る(->なぜか受け取れない)
+		target			= win;		//	最初はオーナーウィンドウ
+		absolute		= 100;
+		enabled			= true;
+	}
+
+	function setMargin(l=marginL, t=marginT, r=marginR, b=marginB)
+	{
+		//	マージンの変更
+		marginL	= l;
+		marginT	= t;
+		marginR	= r;
+		marginB	= b;
+		draw();
+	}
+
+	function setColor(t=textcolor, b=bgcolor)
+	{
+		//	色の変更
+		textcolor	= t;
+		bgcolor		= b;
+		draw();
+	}
+
+	function on(x, y)
+	{
+		//	このレイヤーの実座標を計算
+		var par = this;
+		var l = left;
+		var t = top;
+		do
+		{
+			par	= par.parent;
+			l	+= par.left;
+			t	+= par.top;
+		}
+		while(!par.isPrimary);
+
+		//	指定の座標がコントロール内か？
+		return (((x - (l+width)) & (l - x) & (y - (t+height)) & (t - y)) < 0);
+	}
+
+	function enable()	{}	//	有効になったとき(overrideする)
+	function disable()	{}	//	無効になったとき(     〃     )
+
+	function draw()		{}	//	再描画処理(overrideする)
+
+	property enabled
+	{
+		setter(b)
+		{
+			if(super.enabled!=b)
+			{
+				if(b)
+					enable();	//	有効になった
+				else
+					disable();	//	無効になった
+				super.enabled	= b;
+			}
+		}
+		getter
+		{
+			return super.enabled;
+		}
+	}
+
+	property layertype
+	{
+		getter
+		{
+			return LAYERTYPE;
+		}
+	}
+
+}
+
+@endif

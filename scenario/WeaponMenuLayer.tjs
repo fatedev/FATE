@@ -1,0 +1,665 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) TYPE-MOON All Rights Reserved.
+/		武器辞典メニュー
+/----------------------------------------------------------------------------*/
+@if(__WEAPONMENULAYER_DEFINED__==0)
+@set(__WEAPONMENULAYER_DEFINED__=1)
+
+class WeaponMenuLayer extends ExtendMenuLayer
+{
+	var title, back;	//	タイトル、バックボタン
+	var buttons;		//	ページボタン
+	var bar;			//	スクロールバー
+
+	var	imagetemporary;	//	画像読み込み用のレイヤー
+
+	var wlayers	= [];	//	武器画像表示
+	var tlayers	= [];	//	テキスト表示用
+	var	nlayers	= [];	//	武器名表示用
+	var	ulayers	= [];	//	使用者名表示用
+	var curweaponlayerno;	//	表示中のレイヤー番号(武器画像)
+	var curtextlayerno;		//	　　　　〃　　　　　(テキスト画像)
+//	var curwpnamelayerno;	//	　　　　〃　　　　　(武器名画像)
+//	var curuserlayerno;		//	　　　　〃　　　　　(使用者名画像)
+
+	var pagelayer;		//	表示中のページ番号を表示する
+
+	var flags;			//	表示可能フラグ(f.weapon/sf.weapon)
+
+	var _currentweaponno;	//	選択・表示中の武器
+	var currentpage;		//	表示中のテキストページ
+
+	var _mouseonno;	//	マウスがある位置の武器
+
+	var weapondatas	= [
+		//	名前			画像位置	ページ数	使用者
+		[ "カリバーン",		532, 26,	2,			"セイバー" ],
+		[ "カラドボルグ2",	561, 42,	1,			"アーチャー" ],
+		[ "グラム",			541, 46,	2,			"？？？？" ],
+		[ "デュランダル",	547, 45,	1,			"？？？？" ],
+		[ "ハルペー",		536, 37,	1,			"？？？？" ],
+		[ "ヴァジュラ",		526, 37,	1,			"？？？？" ],
+		[ "ダインスレフ",	537, 45,	1,			"？？？？" ],
+		[ "物干し竿",		473, 58,	2,			"アサシン" ],
+		[ "ダーク",			568, 50,	1,			"真アサシン" ],
+		[ "ライダーダガー",	463, 57,	1,			"ライダー" ],
+		[ "大剣(無銘)",		463, 46,	1,			"バーサーカー" ],
+		[ "アゾット",		554, 43,	1,			"凛" ],
+		[ "ゼルレッチ",		547, 39,	1,			"凛" ],
+		[ "干将・莫耶",		483, 34,	2,			"アーチャー" ],
+		[ "方天戟",			561, 25,	2,			"？？？？" ],
+		[ "黒鍵",			562, 25,	2,			"言峰綺礼" ],
+		[ "虎竹刀",			565, 25,	2,			"藤村大河" ]
+	];
+	var buttondatas	= [
+		[ 3, "prev",	"wp_left",	"前のページへ", 148, 424 ],
+		[ 3, "next",	"wp_right",	"次のページへ", 272, 424 ]
+	];
+
+	var weaponbaseleft	= 466, weaponbasetop	= 28;
+	var weaponmaxwidth	= 312, weaponmaxheight	= 521;	//	横:ライダーダガー、縦：カリバーン
+
+	var textbaseleft= 25, textbasetop	= 161;
+	var textwidth	= 399, textheight	= 250;
+
+	var wnamebaseleft	= 114, wnamebasetop	= 70;
+	var wnamewidth		= 221, wnameheight	= 44;
+
+	var userbaseleft	= 114, userbasetop	= 121;
+	var userwidth		= 221, userheight	= 33;
+
+	var clip_left		= 88;
+	var clip_top		= 468;
+	var clip_width		= 273;
+	var clip_height		= 113;
+	var clip_lineheight	= 26;
+	var clip_separator	= 3;
+	var clip_bgcolor	= 0xFF020E31;
+	var clip_septcolor	= 0xFF102750;
+
+	var scroll_left		= 362;
+	var scroll_top		= 464;
+	var scroll_width	= 14;
+	var scroll_height	= 121;
+
+	var font_left		= 206;
+	var font_top		= 426;
+	var fontwidth		= 13;	//	1文字の幅
+	var fontheight		= 21;
+
+	var changetime		= 600;
+	var	textchangetime	= 300;
+
+	var weaponchange_rule	= "crystal_bt";
+	var textchange_rule		= [ "r2l_half", "l2r_half" ];
+
+	var showed;
+
+	function WeaponMenuLayer(win, par, mode="local")
+	{
+		super.ExtendMenuLayer(...);
+		name	= "武器辞典メニュー";
+
+		flags	= mode=="global" ? sf.weapon : f.weapon;	//	チェックするフラグ
+		var wds = weapondatas;
+		for(var i=0; i<wds.count; i++)
+		{
+			if(!flags[wds[i][0]])
+			{
+				wds.erase(i);	//	表示不可のものは削除する
+				i--;
+			}
+			else
+			{
+				wds[i][5]	= new global.Layer(win, this);
+				wds[i][5].loadImages("wp_"+wds[i][0]);	//	名称画像を読み込んでおく
+			}
+		}
+
+		loadImages("weapon_bg");
+		setSizeToImageSize();
+		hitType		= htMask;
+		hitThreshold	= 0;
+		focusable		= true;
+
+		title	= new global.MenuTitleLayer(win, this, "weapon_title", 27, 20, 1, 11);
+		with(back = new MenuBackButtonLayer(win, this))
+		{
+			.onKeyDown	= function(key, shift)
+			{
+				if(key==VK_LEFT || key==VK_UP || key==VK_TAB)
+					parent.focus();
+				else
+					global.MenuBackButtonLayer.onKeyDown(key, shift, true);
+			};
+		}
+		buttons	= createButtons(win, this, buttondatas);
+		with(buttons.get("prev"))
+		{
+			.visible	= false;
+			.onMouseWheel	= function() { parent.onMouseWheel(...); };
+		}
+		with(buttons.get("next"))
+		{
+			.visible	= false;
+			.onMouseWheel	= function() { parent.onMouseWheel(...); };
+		}
+
+		with(bar = new global.SimpleScrollBarLayer(win, this, scroll_width, scroll_height))
+		{
+			.setPos(scroll_left, scroll_top);
+			.onscroll	= onScroll;
+			.moving		= 24;
+			var cnt = 0;
+			for(var i=0; i<weapondatas.count; i++)
+				cnt++ if flags[weapondatas[i][0]];
+			.total		= cnt * clip_lineheight + (cnt - 1) * clip_separator;
+			.area		= clip_height;
+			.current	= 0;
+		}
+
+		imagetemporary	= new global.Layer(win, this);
+		imagetemporary.name	= "画像仮読み込みレイヤー";
+
+		for(var i=0; i<2; i++)
+		{
+			with(wlayers[i] = new global.KAGLayer(win, this))
+			{
+				.setPos(weaponbaseleft, weaponbasetop);
+				.setSize(weaponmaxwidth, weaponmaxheight);
+				.name	= "武器画像("+i+")";
+				.onMouseDown	= function() {
+					parent.onMouseDown(...);
+				} incontextof wlayers[i];
+			}
+		}
+		for(var i=0; i<2; i++)
+		{
+			with(tlayers[i] = new global.KAGLayer(win, this))
+			{
+				.setPos(textbaseleft, textbasetop);
+				.setSize(textwidth, textheight);
+				.name	= "武器説明("+i+")";
+				.onMouseDown	= function() {
+					parent.onMouseDown(...);
+				} incontextof tlayers[i];
+				.onTransitionCompleted	= function() {
+					parent.focus();
+				} incontextof tlayers[i];
+			}
+		}
+		for(var i=0; i<2; i++)
+		{
+			with(nlayers[i] = new global.KAGLayer(win, this))
+			{
+				.setPos(wnamebaseleft, wnamebasetop);
+				.setSize(wnamewidth, wnameheight);
+				.name	= "武器名("+i+")";
+				.onMouseDown	= function() {
+					parent.onMouseDown(...);
+				} incontextof nlayers[i];
+			}
+			.nlayers	= nlayers;
+		}
+		for(var i=0; i<2; i++)
+		{
+			with(ulayers[i] = new global.KAGLayer(win, this))
+			{
+				.setPos(userbaseleft, userbasetop);
+				.setSize(userwidth, userheight);
+				.name	= "使用者名("+i+")";
+				.onMouseDown	= function() {
+					parent.onMouseDown(...);
+				} incontextof ulayers[i];
+				.onTransitionCompleted	= function() {
+					parent.focus();
+				} incontextof ulayers[i];
+			}
+			.ulayers	= ulayers;
+		}
+		curweaponlayerno= 0;
+		curtextlayerno	= 2;
+
+		with(pagelayer = new global.KAGLayer(win, this))
+		{
+			.setSize(fontwidth*3, fontheight);
+			.setPos(font_left, font_top);
+			.name	= "ページ表示";
+			.onMouseDown	= function() {
+				parent.onMouseDown(...);
+			} incontextof pagelayer;
+		}
+
+		//	内容を初期化
+		if(initWeapon(_currentweaponno = 0))
+		{
+			curweaponlayerno	= (curweaponlayerno+1) & 1;	//	切替
+			curweaponlayer.visible	= true;
+			curwpnamelayer.visible	= true;
+			curuserlayer.visible	= true;
+
+			if(initText(currentpage = 0))
+			{
+				curtextlayerno	= (curtextlayerno+1) & 1;	//	切替
+				curtextlayer.visible	= true;
+			}
+		}
+		_mouseonno	= -1;
+		focus();
+	}
+
+	function finalize()
+	{
+		release(pagelayer);
+		for(var i=0; i<2; i++)
+		{
+			release(ulayers[i]);
+			release(nlayers[i]);
+			release(tlayers[i]);
+			release(wlayers[i]);
+		}
+		release(imagetemporary);
+		release(bar);
+		release(buttons);
+		release(back);
+		release(title);
+		var wds = weapondatas;
+		for(var i=0; i<wds.count; i++)
+			invalidate wds[i][5];
+		super.finalize(...);
+	}
+
+	function show()
+	{
+		if(!showed)
+		{
+			showed	= true;
+			super.show(...);
+			if(typeof parent.enableButtons != "undefined")
+				parent.enableButtons(false);
+			opacity	= 1;
+			focus();
+
+			title.resetPos();
+			title.open();
+			back.resetPos();
+			back.open();
+
+			moveCursor(this, 225, 480);
+		}
+	}
+
+	function hide()
+	{
+		if(showed)
+		{
+			showed	= false;
+			title.close();
+			back.close();
+			focusable	= false;
+			if(typeof parent.enableButtons != "undefined")
+				parent.enableButtons(true);
+			super.hide(...);
+		}
+	}
+
+	function initWeapon(weaponno)
+	{
+		var wd = weapondatas[weaponno];
+		if(wd==void)	return false;
+
+		//	読み込み
+		imagetemporary.loadImages("wp_"+currentweapon+"画像");
+		var w = imagetemporary.imageWidth, h = imagetemporary.imageHeight;
+
+		//	余白を消去し、武器画像を転送
+		var l = wd[1] - weaponbaseleft, t = wd[2] - weaponbasetop;
+		with(nextweaponlayer)
+		{
+			.fillRect(0, 0, weaponmaxwidth, weaponmaxheight, 0x00000000);
+/*			var color = 0x00FFFFFF;
+			.fillRect(0, 0, weaponmaxwidth, t, color);
+			.fillRect(0, t, l, weaponmaxheight-t, color);
+			.fillRect(l+w, t, weaponmaxwidth-w-l, weaponmaxheight-t, color);
+			.fillRect(l, t+h, w, weaponmaxheight-t-h, color);
+*/			.copyRect(l, t, imagetemporary, 0, 0, w, h);
+//			.copyRect(0, 0, this, weaponbaseleft, weaponbasetop, weaponmaxwidth, weaponmaxheight);
+//			.pileRect(l, t, imagetemporary, 0, 0, w, h,, false);
+		}
+		nextwpnamelayer.loadImages("wp_"+currentweapon+"title");	//	武器名称
+		nextuserlayer.loadImages("wp_"+wd[4]);	//	使用者名
+		return true;
+	}
+
+	function changeWeapon(weaponno)
+	{
+		if(!initWeapon(weaponno))	return;
+
+		//	トランジション
+		nextweaponlayer.stopTransition();
+		curweaponlayer.stopTransition();
+		nextwpnamelayer.stopTransition();
+		curwpnamelayer.stopTransition();
+		nextuserlayer.stopTransition();
+		curuserlayer.stopTransition();
+
+		curweaponlayer.beginTransition(%[method:"universal",rule:weaponchange_rule,
+			children:false,time:changetime], nextweaponlayer);
+		curwpnamelayer.beginTransition(%[method:"crossfade",children:false,time:changetime],
+			nextwpnamelayer);
+		curuserlayer.beginTransition(%[method:"crossfade",children:false,time:changetime],
+			nextuserlayer);
+
+		curweaponlayerno	= (curweaponlayerno+1) & 1;	//	切替
+
+		//	武器が変更になったら、もちろん説明も変わる
+		changeText(0);
+	}
+
+	function initText(page)
+	{
+		//	対応するテキスト画像を読み込む
+		var fname = "wp_"+currentweapon+"説明_"+page;
+		try
+		{
+			nexttextlayer.loadImages(fname);
+		}
+		catch
+		{
+			return false;
+		}
+
+		currentpage	= page;
+
+		//	ボタンの表示を設定
+		var pagecnt = weapondatas[currentweaponno][3];
+		buttons.get("prev").visible	= page>0;
+		buttons.get("next").visible	= page<pagecnt-1;
+		window.focusedLayer	= void;
+
+		//	ページ番号を表示
+		if(pagecnt>1)
+		{
+			imagetemporary.loadImages("wp_numfont");
+			var font = imagetemporary;
+			var fw = fontwidth, fh = fontheight;
+			with(pagelayer)
+			{
+				.copyRect(0, 0, font, fw*page, 0, fw, fh);				//	現在のページ
+				.copyRect(fw, 0, font, font.imageWidth-fw, 0, fw, fh);	//	'/'(スラッシュ)
+				.copyRect(fw*2, 0, font, fw*(pagecnt-1), 0, fw, fh);	//	ページ数
+				.visible	= true;
+			}
+		}
+		else
+			pagelayer.visible	= false;
+
+		return true;
+	}
+
+	function changeText(page)
+	{
+		var transno = page>=currentpage ? 0 : 1;
+		if(!initText(page))	return;
+
+		//	トランジション
+		nexttextlayer.stopTransition();
+		curtextlayer.stopTransition();
+
+		curtextlayer.beginTransition(%[method:"universal",rule:textchange_rule[transno],
+			children:false,time:textchangetime], nexttextlayer);
+
+		curtextlayerno	= (curtextlayerno+1) & 1;	//	切替
+	}
+
+	function drawList()
+	{
+		var cl = clip_left, ct = clip_top, cw = clip_width, ch = clip_height;
+		var clh = clip_lineheight, cs = clip_separator;
+		setClip(cl, ct, cw, ch);
+		var top	= -bar.current;
+		var wds = weapondatas;
+		for(var i=0; i<wds.count; i++)
+		{
+			var wd = wds[i];
+			if(top+clh+cs > 0 && top < ch)
+			{
+				if(i==mouseonno)
+				{
+					fillRect(cl, top + ct, cw, clh, clip_bgcolor);	//	ON
+					imagetemporary.loadImages("wp_選択バー");
+					copyRect(cl, top + ct, imagetemporary, 0, 0,
+						imagetemporary.imageWidth\2, imagetemporary.imageHeight);
+				}
+				else
+					fillRect(cl, top + ct, cw, clh, clip_bgcolor);	//	OFF
+				var w = wd[5].imageWidth\2;
+				var offset = (currentweaponno==i) ? w : 0;
+				pileRect(cl, top + ct,
+					wd[5], offset, 0, w, wd[5].imageHeight,, false);
+				fillRect(cl, top + ct + clh,
+					cw, cs, clip_septcolor);
+			}
+			top	+= clh + cs;
+		}
+		setClip(0, 0, width, height);
+	}
+
+	function closeThis()
+	{
+		parent.closeChild(this);
+	}
+
+	function isInnerClipArea(x, y)
+	{
+		return (((x - (clip_left+clip_width)) & (clip_left - x) & (y - (clip_top+clip_height)) & (clip_top - y)) < 0);
+	}
+
+	function onFocus()
+	{
+		mouseonno	= mouseonno<0 ? 0 : (mouseonno>=weapondatas.count ? weapondatas.count-1 : mouseonno);
+		drawList();
+	}
+
+	function onBlur()
+	{
+//		mouseonno	= mouseonno<(weapondatas.count>>1) ? -1 : weapondatas.count;
+		drawList();
+	}
+
+	function onMouseMove(x, y)
+	{
+		if(isInnerClipArea(x, y))
+		{
+			var t = y - clip_top + bar.current;
+			var no = t \ (clip_lineheight + clip_separator);
+			if(no != mouseonno)
+			{
+				mouseonno	= no;
+				drawList();
+			}
+		}
+	}
+
+	function onMouseDown(x, y, button, shift)
+	{
+		if(!showed)	return;
+		dm("mouse down: "+button);
+		if(button == mbLeft)
+		{
+			if(isInnerClipArea(x, y))
+			{
+				currentweaponno	= mouseonno;
+				drawList();
+			}
+			focus();
+		}
+		else if(button == mbRight)
+			closeThis();
+	}
+
+	function onMouseUp(x, y, button, shift)
+	{
+		if(!showed)	return;
+		if(button == mbRight)
+			parent.onMouseUp(...);
+	}
+
+	function onMouseWheel()
+	{
+		bar.onMouseWheel(...);
+	}
+
+	function onButtonDown(btn)
+	{
+		if(!showed)	return;
+		switch(btn.id)
+		{
+		case "back":
+			closeThis();
+			break;
+
+		case "prev":
+			changeText(currentpage-1) if currentpage>0;
+			break;
+		case "next":
+			changeText(currentpage+1) if currentpage<weapondatas[currentweaponno][3]-1;
+			break;
+		}
+	}
+
+	function onScroll()
+	{
+		drawList();
+	}
+
+	function onKeyDown(key, shift)
+	{
+		if(!showed)	return;
+		var proceed	= true;
+
+		switch(key)
+		{
+		//	項目を上下
+		case VK_UP:
+			if(mouseonno>0)
+			{
+				mouseonno--;
+				var t = mouseonno*(clip_lineheight+clip_separator);
+				if(bar.current> t)
+					bar.current	= t;
+				else if(bar.current+clip_height<t+clip_lineheight)
+					bar.current	= t+clip_lineheight-clip_height;
+				else
+					drawList();
+			}
+			proceed	= false;
+			break;
+		case VK_DOWN:
+			if(mouseonno<weapondatas.count-1)
+			{
+				mouseonno++;
+				var t = mouseonno*(clip_lineheight+clip_separator);
+				if(bar.current> t)
+					bar.current	= t;
+				else if(bar.current+clip_height<t+clip_lineheight)
+					bar.current	= t+clip_lineheight-clip_height;
+				else
+					drawList();
+			}
+			else
+			{
+				mouseonno++;
+				back.focus();
+			}
+			proceed	= false;
+			break;
+
+		//	ページを前後
+		case VK_LEFT:
+			onButtonDown(%[id:"prev"]);
+			proceed	= false;
+			break;
+		case VK_RIGHT:
+			onButtonDown(%[id:"next"]);
+			proceed	= false;
+			break;
+
+		//	タブ
+		case VK_TAB:
+			back.focus();	//	フォーカスがBackに移るのみ
+			proceed	= false;
+			break;
+
+		//	選択する
+		case VK_RETURN:
+		case VK_SPACE:
+			currentweaponno	= mouseonno;
+			drawList();
+			proceed	= false;
+			break;
+
+		//	閉じる
+		case VK_ESCAPE:
+		case VK_DELETE:
+		case VK_BACK:
+		case VK_HOME:
+			closeThis();
+			proceed	= false;
+			break;
+		}
+
+		super.onKeyDown(key, shift, proceed);
+	}
+
+	function onJoyStick(trig)
+	{
+		if(!showed)	return;	//	閉じる途中とかでは機能しない
+
+		dm("trigger: "+trig);
+		if(trig & jsLeft)			onKeyDown(VK_LEFT);
+		else if(trig & jsRight)		onKeyDown(VK_RIGHT);
+		else if(trig & jsUp)		onKeyDown(VK_UP);
+		else if(trig & jsDown)		onKeyDown(VK_DOWN);
+		else if(trig & jsTrigger1)	onKeyDown(VK_RETURN);
+		else if(trig & jsTrigger2)	onKeyDown(VK_ESCAPE);
+		else						super.onJoyStick(trig, true);
+	}
+
+	property curweaponlayer	{ getter { return wlayers[curweaponlayerno]; } }
+	property nextweaponlayer{ getter { return wlayers[(curweaponlayerno+1)&1]; } }
+	property curtextlayer	{ getter { return tlayers[curtextlayerno]; } }
+	property nexttextlayer	{ getter { return tlayers[(curtextlayerno+1)&1]; } }
+	property curwpnamelayer	{ getter { return nlayers[curweaponlayerno]; } }
+	property nextwpnamelayer{ getter { return nlayers[(curweaponlayerno+1)&1]; } }
+	property curuserlayer	{ getter { return ulayers[curweaponlayerno]; } }
+	property nextuserlayer	{ getter { return ulayers[(curweaponlayerno+1)&1]; } }
+	property currentweaponno
+	{
+		setter(n)
+		{
+			if(_currentweaponno==n || n<0 || n>=weapondatas.count)	return;
+			_currentweaponno	= n;
+			changeWeapon(n);
+		}
+		getter	{ return _currentweaponno; }
+	}
+	property currentweapon
+	{
+		getter { return weapondatas[currentweaponno]!=void ? weapondatas[currentweaponno][0] : "";}
+	}
+	property mouseonno
+	{
+		setter(n)
+		{
+			if(_mouseonno == n || n<0-1 || n>weapondatas.count)	return;
+			_mouseonno	= n;
+		}
+		getter	{ return _mouseonno; }
+	}
+}
+
+/*----------------------------------------------------------------------------/
+/	
+/----------------------------------------------------------------------------*/
+@endif

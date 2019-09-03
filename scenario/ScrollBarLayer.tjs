@@ -1,0 +1,607 @@
+/*-----------------------------------------------------------------------------
+/	Copyright (C) 1999-2002 TYPE-MOON All Rights Reserved.
+/		描画に画像を使用するスクロールバーレイヤー
+/----------------------------------------------------------------------------*/
+@if(__SCROLLBARLAYER_DEFINED__==0)
+@set(__SCROLLBARLAYER_DEFINED__=1)
+
+Scripts.execStorage("FadeLayer.tjs");
+
+class ScrollBarLayer extends FadeLayer
+{
+	//	使用する画像ファイル名
+	var imgs = [
+		"scroll_basetop",
+		"scroll_base",
+		"scroll_basebottom",
+		"scroll_slidertop",
+		"scroll_slider",
+		"scroll_sliderbottom"
+	];
+	var images;				//	画像
+
+	var _total = 1;			//	全体数
+
+	var _size;				//	長さ
+	var vertical;			//	縦か？
+	var _marginLesser = 0;	//	小さいほうのマージン
+	var _marginBigger = 0;	//	大きいほうのマージン
+
+	var slider;				//	スライダーオブジェクト
+
+	var _state		= 0;	//	状態
+
+	var onscroll	= void;
+
+	var target;		//	onScrollなどの送り先
+
+	function ScrollBarLayer(win, par, size, lesser, bigger, vert=true, imgs=void, othersize=void)
+	{
+//dm(name+"("+this+")  call ScrollBarLayer");
+		super.FadeLayer(...);
+		name	= "スクロールバー for "+par.name;
+
+		//	画像リソース読み込み
+		if(imgs!==void)
+			this.imgs.assign(imgs);
+		loadResource();
+
+		_marginLesser	= lesser;
+		_marginBigger	= bigger - 1;
+		vertical	= vert;
+		if(othersize!==void)
+		{
+			if(vert)	width	= othersize;
+			else		height	= othersize;
+		}
+		this.size	= size;
+
+		//	スライダー生成
+		slider	= new ScrollSliderLayer(win, this);
+
+		opacity	= 255;
+		visible	= true;
+	}
+
+	function finalize()
+	{
+//dm(name+"("+this+")  call finalize");
+		invalidate slider;
+		for(var i=imgs.count-1; i>=0; i--)
+			release(images[i]);
+		invalidate images;
+
+		super.finalize(...);
+	}
+
+	function loadResource()
+	{
+		//	画像を読み込む
+		var si = images = [];
+		for(var i=0; i<imgs.count; i++)
+		{
+			if(imgs[i]!="")
+			{
+				if(si[i]==void)	si[i]	= new global.Layer(window, this);
+				var img = si[i];
+				img.loadImages(imgs[i]);
+				img.setSize(img.imageWidth>>2, img.imageHeight);
+				img.name = "resource: "+imgs[i];
+			}
+		}
+	}
+
+	function setMargin(l, b)
+	{
+//dm(name+"("+this+")  call setMargin");
+		_marginLesser	= l;
+		_marginBigger	= b;
+		slider.position	= silder.position;
+		slider.resize();
+	}
+
+	function draw()
+	{
+//dm(name+"("+this+")  call draw");
+		var si = images;
+		var bt = si[0];
+		var bb = si[2];
+		var b = si[1];
+		if(bt!==void && bb!==void && b!==void)
+		{
+			var sta = state;
+			if(vertical)
+			{
+				//	縦方向
+				setSize(bt.width, size);
+				copyRect(0, 0, bt, bt.width*sta, 0, bt.width, bt.height);
+				copyRect(0, height - bb.height, bb, bb.width*sta, 0, bb.width, bb.height);
+				stretchCopy(0, bt.height, bt.width, height - bt.height - bb.height,
+							b, b.width*sta, 0, b.width, b.height);
+			}
+			else
+			{
+				//	横方向
+				setSize(size, bt.height);
+				copyRect(0, 0, bt, bt.width*sta, 0, bt.width, bt.height);
+				copyRect(width - bb.width, 0, bb, bb.width*sta, 0, bb.width, bb.height);
+				stretchCopy(bt.width, 0, width - bt.width - bb.width, height,
+							b, b.width*sta, 0, b.width, b.height);
+			}
+		}
+		else if(vertical)
+		{
+			setSize(width, size);
+			fillRect(0, 0, width, size, 0x00000000);	//	下地の画像が無ければ透明
+		}
+		else
+		{
+			setSize(size, height);
+			fillRect(0, 0, size, height, 0x00000000);	//	下地の画像が無ければ透明
+		}
+	}
+
+	function focus()
+	{
+//dm(name+"("+this+")  call focus");
+		slider.focus();
+	}
+
+	function onMouseEnter()
+	{
+//dm(name+"("+this+")  call onMouseEnter");
+		state	= slider.state	= 1;
+		if(target!==void)
+			target.focus();
+		else if(onscroll===void)
+			parent.focus();
+		else
+			focus();
+	}
+
+	function onMouseLeave()
+	{
+//dm(name+"("+this+")  call onMouseLeave");
+		state	= slider.state	= 0;
+	}
+
+	function onMouseDown(x, y, button, shift)
+	{
+//dm(name+"("+this+")  call onMouseDown");
+		if(button != mbLeft)
+		{
+			if(target!=void)
+				target.onMouseDown(...);
+			else
+				parent.onMouseDown(...);
+		}
+	}
+
+	function onMouseUp(x, y, button, shift)
+	{
+//dm(name+"("+this+")  call onMouseUp");
+		if(button == mbLeft)
+		{
+			var pos, spos, wpos;
+			if(vertical)
+			{
+				pos	= y;
+				spos= slider.top;
+				wpos= slider.top + slider.height;
+			}
+			else
+			{
+				pos	= x;
+				spos= slider.left;
+				wpos= slider.left + slider.width;
+			}
+			if(pos<spos)
+				current	-= area;
+			else if(pos>wpos)
+				current	+= area;
+		}
+	}
+
+	function onMouseWheel()
+	{
+		slider.onMouseWheel(...);
+	}
+
+	function onScroll()
+	{
+//dm(name+"("+this+")  call onScroll");
+		if(onscroll!==void)
+			onscroll(current);
+		else if(target!=void && typeof target.onScroll != "undefined")
+			target.onScroll(current);
+		else if(typeof parent.onScroll != "undefined")
+			parent.onScroll(current);
+	}
+
+	property state
+	{
+		setter(s)
+		{
+//dm(name+"("+this+") set state");
+			if(s!==_state)
+			{
+				_state	= s;
+				draw();
+			}
+		}
+		getter	{ return _state; }
+	}
+
+	property size
+	{
+		setter(s)
+		{
+//dm(name+"("+this+") set size");
+			if(s!==size)
+			{
+				_size	= s;
+				draw();		//	ベースの大きさを変更
+			}
+		}
+		getter	{ return _size; }
+	}
+
+	property total
+	{
+		setter(t)
+		{
+//dm(name+"("+this+") set total");
+			if(t==total)		return;			//	同じなら変更しない
+			if(t<1)				t	= 1;		//	最低１
+//			dm("scrollbar total: "+total+" -> "+t);
+			_total	= t;
+			if(area>t)			area= t;		//	表示範囲は全体を超えない
+			if(current+area>t)	current=t-area;	//	はみ出る表示位置は補正
+		}
+		getter	{ return _total; }
+	}
+
+	property area
+	{
+		setter(a)
+		{
+//dm(name+"("+this+") set area");
+			if(a<1)				a = 1;				//	最低１
+			if(a>total)			a = total;			//	全体領域を超えない
+			if(a+current>total)	current	= total - a;//	はみでない
+//	トータルが変わったときも変更しなかったので、いつでも変更するように修正
+//			if(a==area)			return;				//	同じなら変更しない
+//			dm("scrollbar total: "+area+" -> "+a);
+			slider.area	= a;
+		}
+		getter	{ return slider.area; }
+	}
+
+	property current
+	{
+		setter(c)
+		{
+//dm(name+"("+this+") set current");
+			if(c==current)	return;				//	同じなら変更しない
+			slider.current	= c;
+		}
+		getter	{ return slider.current; }
+	}
+
+	property realSize
+	{
+		getter	{ return size - marginLesser - marginBigger; }
+	}
+
+	property marginLesser
+	{
+		setter(m)
+		{
+//dm(name+"("+this+") set marginLesser");
+			if(m!==marginLesser)
+			{
+				_marginLesser	= m;
+				slider.resize();
+			}
+		}
+		getter	{ return _marginLesser; }
+	}
+
+	property marginBigger
+	{
+		setter(m)
+		{
+//dm(name+"("+this+") set marginBigger");
+			if(m!==marginBigger)
+			{
+				_marginBigger	= m;
+				slider.resize();
+			}
+		}
+		getter	{ return _marginBigger; }
+	}
+
+	property moving
+	{
+		setter(m)	{ slider.moving = m; }
+	}
+}
+
+class ScrollSliderLayer extends FadeLayer
+{
+	var _state	= 0;
+
+	var _area	= 1;
+	var _current= 0;	//	現在値(ただし実数)
+
+	var last;
+
+	var moving	= 1;	//	移動量
+
+	var vertical;
+
+	function ScrollSliderLayer(win, par)
+	{
+//dm(name+"("+this+")  call ScrollSliderLayer");
+		super.FadeLayer(...);
+		name	= "スクロールスライダー";
+
+		vertical	= par.vertical;
+		if(vertical)
+		{
+			left	= (par.width - par.images[3].width) >> 1;
+			top		= par.marginLesser;
+		}
+		else
+		{
+			left	= par.marginLesser;
+			top		= (par.height- par.images[3].height)>> 1;
+		}
+//		focusable	= true;
+		visible		= true;
+		opacity		= 255;
+	}
+
+	function finalize()
+	{
+//dm(name+"("+this+")  call finalize");
+		super.finalize(...);
+	}
+
+	function draw()
+	{
+//dm(name+"("+this+")  call draw");
+		var par = parent;
+		var si = par.images;
+		var st = si[3];
+		var sb = si[5];
+		var s = si[4];
+		var sta = state;
+		if(vertical)
+		{
+			//	縦方向
+			copyRect(0, 0, st, st.width*sta, 0, st.width, st.height);
+			copyRect(0, height - sb.height, sb, sb.width*sta, 0, sb.width, sb.height);
+			stretchCopy(0, st.height, st.width, height - st.height - sb.height,
+						s, s.width*sta, 0, s.width, s.height);
+		}
+		else
+		{
+			//	横方向
+			copyRect(0, 0, st, st.width*sta, 0, st.width, st.height);
+			copyRect(width - sb.width, 0, sb, sb.width*sta, 0, sb.width, sb.height);
+			stretchCopy(st.width, 0, width - st.width - sb.width, height,
+						s, sb.width*sta, 0, s.width, s.height);
+		}
+	}
+
+	function resize()
+	{
+//dm(name+"("+this+")  call resize");
+		var par = parent;
+		if(vertical)
+			height	= int(area * par.realSize / par.total);
+		else
+			width	= int(area * par.realSize / par.total);
+		draw();
+	}
+
+	function onMouseEnter()
+	{
+		parent.onMouseEnter(...);
+	}
+
+	function onMouseLeave()
+	{
+		parent.onMouseLeave(...);
+	}
+
+	function onMouseDown(x, y, button, shift)
+	{
+//dm(name+"("+this+")  call onMouseDown");
+		if(button == mbLeft)
+		{
+			last	= parent.vertical ? y : x;
+			state	= 2;
+		}
+		else
+			parent.onMouseDown(...);
+	}
+
+	function onMouseMove(x, y)
+	{
+//dm(name+"("+this+")  call onMouseMove");
+		if(state==2)
+		{
+			var pos = parent.vertical ? y : x;
+			position += pos - last;
+		}
+	}
+
+	function onMouseUp(x, y, button, shift)
+	{
+//dm(name+"("+this+")  call onMouseUp");
+		state	= 1;
+	}
+
+	function onKeyDown(key, shift)
+	{
+//dm(name+"("+this+")  call onKeyDown");
+		switch(key)
+		{
+		case VK_UP:
+			if(vertical)
+			{
+				current	-= moving;	//	1単位ずつ移動
+				return false;
+			}
+			break;
+		case VK_DOWN:
+			if(vertical)
+			{
+				current	+= moving;	//	1単位ずつ移動
+				return false;
+			}
+			break;
+		case VK_LEFT:
+			if(!vertical)
+			{
+				current	-= moving;	//	1単位ずつ移動
+				return false;
+			}
+			break;
+		case VK_RIGHT:
+			if(!vertical)
+			{
+				current	+= moving;	//	1単位ずつ移動
+				return false;
+			}
+			break;
+		case VK_PRIOR:
+			current	-= area;	//	ページ単位
+			return false;
+		case VK_NEXT:
+			current	+= area;	//	ページ単位
+			return false;
+		}
+		super.onKeyDown(key, shift, true);	//	無ければ他へ
+	}
+
+	function onJoyStick(trig)
+	{
+		var process	= true;
+
+		if(!vertical)
+		{
+			if(trig & jsLeft)
+			{
+				current	-= moving;	//	1単位ずつ移動
+//				onKeyDown(VK_LEFT);
+				process	= false;
+			}
+			else if(trig & jsRight)	
+			{
+				current	+= moving;	//	1単位ずつ移動
+//				onKeyDown(VK_RIGHT);
+				process	= false;
+			}
+		}
+		else
+		{
+			if(trig & jsUp)
+			{
+				current	-= moving;	//	1単位ずつ移動
+//				onKeyDown(VK_UP);
+				process	= false;
+			}
+			else if(trig & jsDown)	
+			{
+				current	+= moving;	//	1単位ずつ移動
+//				onKeyDown(VK_DOWN);
+				process	= false;
+			}
+		}
+		super.onJoyStick(trig, process);
+	}
+
+	function onMouseWheel(shift, delta, x, y)
+	{
+//dm(name+"("+this+")  call onMouseWheel");
+		if(delta<0)
+			current	+= moving;	//	1単位ずつ移動
+		else
+			current	-= moving;	//	1単位ずつ移動
+	}
+
+	property state
+	{
+		setter(s)
+		{
+//dm(name+"("+this+") set state");
+			if(s!==_state)
+			{
+				_state	= s;
+				draw();
+			}
+		}
+		getter	{ return _state; }
+	}
+
+	property area
+	{
+		setter(a)
+		{
+//dm(name+"("+this+") set area");
+			_area	= a;
+			resize();
+		}
+		getter	{ return _area; }
+	}
+
+	property position
+	{
+		setter(p)
+		{
+//dm(name+"("+this+") set position");
+			var par	= parent;
+			if(p<par.marginLesser)	p = par.marginLesser;
+			var h = vertical ? par.height : par.width - par.marginBigger;
+			if(p>h)					p = h;
+/*			if(vertical)
+				top		= p;
+			else
+				left	= p;
+*/
+			//	値を変更
+			current	= (p - par.marginLesser) / par.realSize * par.total;
+		}
+		getter	{ return parent.vertical ? top : left; }
+	}
+
+	property current
+	{
+		setter(c)
+		{
+//dm(name+"("+this+") set current");
+			var par = parent;
+			if(c<0)				c	= 0;				//	最低０
+			if(c>par.total-area)c	= par.total - area;	//	最高(total - area)
+			if(current == c)
+				return;
+			_current= c;
+
+			//	スライダーの位置を変更
+			var pos = par.marginLesser + int((c / par.total) * par.realSize);
+			if(vertical)
+				top	= pos;
+			else
+				left= pos;
+
+			//	変化を知らせる
+			parent.onScroll();
+		}
+		getter	{ return int(_current); }
+	}
+}
+
+@endif
